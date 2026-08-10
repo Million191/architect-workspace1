@@ -156,3 +156,26 @@
   devices is ever needed.
 - Features: services list, seat/chair availability grid by date, appointment
   request form, and a cancellable list of requested appointments.
+
+## 2026-08-09
+
+- [x] Connect project to GitHub (init, first commit, push)
+  - Date: 2026-08-09
+  - Session: CC-20260809-h4k9
+  - What changed: Ran `git init`, added a `.gitignore` (node_modules, env
+    files, build output, OS cruft, `/tmp`), made the first commit (40 files
+    incl. `CLAUDE.md`, `PROGRESS.md`, `project-blueprint/`, `src/`), added
+    `origin` remote pointing at the new private GitHub repo
+    `https://github.com/Million191/architect-workspace1`, and pushed `main`.
+    Also created the GitHub account and repo for the (non-technical) user,
+    walked through GitHub's signup/repo-creation UI with them step by step.
+  - Verification: `git push -u origin main` returned
+    `* [new branch] main -> main`; repo confirmed live at
+    https://github.com/Million191/architect-workspace1.
+  - Notes: Local push initially failed with an SSL cert-lookup error
+    (`unable to get local issuer certificate`), likely from AV/network
+    software intercepting TLS on this machine. Fixed by setting
+    `git config --global http.sslBackend schannel` (uses Windows' native
+    cert store instead of Git's bundled CA bundle) — safe, standard fix,
+    no repo-level change. Auth used Git Credential Manager's browser-based
+    GitHub login (no PAT stored in the repo or logs).
