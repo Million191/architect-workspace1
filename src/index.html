@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Fade &amp; Line Barber Shop</title>
+<script>
+(function () {
+  try {
+    var saved = localStorage.getItem("barbershop.theme");
+    var theme = saved ? saved : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    document.documentElement.setAttribute("data-theme", theme);
+  } catch (e) {}
+})();
+</script>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container header-inner">
+    <div class="brand">
+      <span class="brand-mark">&#9986;</span>
+      <span class="brand-name">Fade &amp; Line</span>
+    </div>
+    <div class="header-actions">
+      <nav class="nav">
+        <a href="#services">Services</a>
+        <a href="#seats">Seats</a>
+        <a href="#book">Book</a>
+        <a href="#appointments">My Appointments</a>
+      </nav>
+      <button type="button" id="theme-toggle" class="theme-toggle" role="switch" aria-checked="false" aria-label="Toggle dark mode">
+        <span class="thumb"></span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="container hero-inner">
+    <h1>Sharp cuts. No waiting around.</h1>
+    <p>Check seat availability and book your appointment in under a minute.</p>
+    <a href="#book" class="btn btn-primary">Request an Appointment</a>
+  </div>
+</section>
+
+<section id="services" class="section">
+  <div class="container">
+    <h2>Services</h2>
+    <div class="card-grid" id="services-grid">
+      <!-- filled by app.js -->
+    </div>
+  </div>
+</section>
+
+<section id="seats" class="section section-alt">
+  <div class="container">
+    <h2>Seat Availability</h2>
+    <p class="muted">Pick a date to see how many of our 3 chairs are open at each time slot.</p>
+
+    <label class="field">
+      <span>Date</span>
+      <input type="date" id="availability-date" />
+    </label>
+
+    <div class="seat-legend">
+      <span><i class="dot dot-open"></i> Open seats</span>
+      <span><i class="dot dot-full"></i> Fully booked</span>
+    </div>
+
+    <div class="slot-grid" id="slot-grid">
+      <!-- filled by app.js -->
+    </div>
+
+    <div class="chair-status" id="chair-status">
+      <!-- filled by app.js -->
+    </div>
+  </div>
+</section>
+
+<section id="book" class="section">
+  <div class="container">
+    <h2>Request an Appointment</h2>
+    <form id="booking-form" class="booking-form">
+      <label class="field">
+        <span>Name</span>
+        <input type="text" id="book-name" required placeholder="Your full name" />
+      </label>
+
+      <label class="field">
+        <span>Phone or Email</span>
+        <input type="text" id="book-contact" required placeholder="How we reach you" />
+      </label>
+
+      <label class="field">
+        <span>Service</span>
+        <select id="book-service" required></select>
+      </label>
+
+      <label class="field">
+        <span>Date</span>
+        <input type="date" id="book-date" required />
+      </label>
+
+      <label class="field">
+        <span>Time</span>
+        <select id="book-time" required></select>
+      </label>
+
+      <label class="field">
+        <span>Preferred Barber</span>
+        <select id="book-chair" required></select>
+      </label>
+
+      <button type="submit" class="btn btn-primary">Request Appointment</button>
+      <p id="book-message" class="form-message" role="status"></p>
+    </form>
+  </div>
+</section>
+
+<section id="appointments" class="section section-alt">
+  <div class="container">
+    <h2>My Appointments</h2>
+    <p class="muted">Appointments you've requested on this device.</p>
+    <div id="appointments-list" class="appointments-list">
+      <!-- filled by app.js -->
+    </div>
+  </div>
+</section>
+
+<footer class="site-footer">
+  <div class="container">
+    <p>Fade &amp; Line Barber Shop &mdash; 3 chairs, 6 days a week.</p>
+  </div>
+</footer>
+
+<script src="js/app.js"></script>
+</body>
+</html>
