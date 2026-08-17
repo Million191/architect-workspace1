@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meeting Assistant — Command Center</title>
+<link rel="stylesheet" href="command-center/css/style.css">
+</head>
+<body>
+
+<header class="cc-header">
+  <div class="cc-header-top">
+    <div class="cc-brand">
+      <span class="cc-brand-name">Meeting Assistant</span>
+      <span class="cc-brand-tag">Command Center</span>
+    </div>
+    <div class="cc-header-controls">
+      <div class="cc-toggle" id="cc-mode-toggle">
+        <button type="button" data-mode="real">Real</button>
+        <button type="button" data-mode="sample">Sample</button>
+      </div>
+      <span class="cc-datestamp" id="cc-datestamp-global">Loading data…</span>
+    </div>
+  </div>
+  <nav class="cc-nav" id="cc-nav"></nav>
+</header>
+
+<main class="cc-main" id="cc-main">
+  <p style="color:var(--text-muted);">Loading…</p>
+</main>
+
+<footer class="cc-footer">Meeting Assistant Command Center — reads .colaberry/plan.json and .colaberry/progress.json at runtime.</footer>
+
+<script src="command-center/js/app.js"></script>
+</body>
+</html>

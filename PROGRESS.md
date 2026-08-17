@@ -179,3 +179,97 @@
     cert store instead of Git's bundled CA bundle) — safe, standard fix,
     no repo-level change. Auth used Git Credential Manager's browser-based
     GitHub login (no PAT stored in the repo or logs).
+
+## 2026-08-12
+
+- [x] Build the Project Manager Field Guide knowledge-base deliverable
+  - Date: 2026-08-12
+  - Session: CC-20260812-q7m2
+  - What changed: Added `docs/ProjectManager_FieldGuide.html` — a single
+    self-contained knowledge-base HTML file for the Colaberry accelerator's
+    Week 3 AI Solution Architect track. Worked example: Insurance —
+    "ClaimSense AI" (an FNOL triage & fraud-signal assistant) for a fictional
+    carrier, Meridian Mutual Insurance. Contains: a left topic nav + live
+    search + an offline "Ask" assistant (28-entry keyword-matched Q&A bank,
+    no external API); 12 concise PM-foundations sections (triangle, WBS,
+    critical path, gates, RAID, RACI, agile/waterfall/hybrid, velocity,
+    RAG status, KPIs, an "Architect's Review Lens" checklist); and all 8
+    requested project documents (Charter, WBS, Milestone Timeline/Gantt,
+    RAID Log, RACI Matrix, Sprint Plan, Status Report, Budget/Burn), each
+    with Colaberry-branded doc chrome (cover w/ fetched-and-embedded
+    Colaberry logo, doc-control strip, sign-off block, footer), a
+    Download-HTML button, a Print/Save-as-PDF button, and — for the four
+    tabular docs — a Download-CSV button. Six inline-SVG diagrams/charts
+    (WBS tree, Gantt timeline, dependency network, sprint burndown, budget
+    burn line, milestone RAG donut), no external chart libraries. Built via
+    a Python generator script (`build_field_guide.py`, kept in the session
+    scratchpad, not committed) so chart coordinates and the WBS/RAID/RACI/
+    budget numbers are computed and cross-checked rather than hand-typed.
+  - Verification: WBS work-package percentages sum to exactly 100% (checked
+    in-script and printed at generation time); RACI matrix checked
+    programmatically for exactly one Accountable per row (18/18 pass, 0
+    failures); table row counts (WBS 20, RAID 14, RACI 18, Sprint 10,
+    Budget 7) confirmed against source data by parsing the rendered DOM.
+    JS correctness verified with a hand-rolled Chrome DevTools Protocol
+    client (`cdp_check.py`, raw WebSocket, no external deps — Node isn't
+    installed on this machine) that listens for real
+    `Runtime.exceptionThrown`/console-error events; validated the harness
+    first against a file with a deliberate `SyntaxError` (caught correctly)
+    before confirming zero exceptions/console errors on the real file
+    (`--dump-dom` + stderr grepping was tried first but proved unreliable
+    for this page — it missed the same deliberate error the CDP client
+    caught cleanly, so the CDP method was used as the authoritative check).
+    Visually confirmed via CDP-driven screenshots (scrolled to specific
+    sections) that the hero, WBS document (cover/table/tree diagram),
+    RACI matrix (color-coded chips), and Budget document (PV/EV/AC/SPI/CPI
+    tiles, chart) all render correctly against the Colaberry palette.
+    Opened the file in the default browser for the user.
+  - Notes: Colaberry logo fetched live from
+    `https://enterprise.colaberry.ai/colaberry-logo-transparent.png` and
+    embedded as a base64 data URI (no external image dependency at
+    runtime). Google Fonts (Roboto/Roboto Mono) linked per the brand spec's
+    "optionally the Roboto webfont" allowance; a system-ui/Arial fallback
+    stack is declared so the page still reads correctly fully offline.
+
+## 2026-08-17
+
+- [x] Build the Meeting Assistant Command Center (STORY-000) — Overview checkpoint
+  - Date: 2026-08-17
+  - Session: CC-20260817-k4n7
+  - What changed: Started the "Meeting Assistant" Colaberry accelerator project.
+    Take-stock found nothing pre-existing (no `.colaberry/`, no Command Center,
+    no `docs/stories/`), so built from scratch, paused at the Overview
+    checkpoint per the brief. Added `.colaberry/{plan,progress,manifest,profile}.json`
+    (plan/progress data constructed from the requirements, stories, releases,
+    roles, and guardrails given directly in the task brief, since no portal
+    sync had populated these files yet). Added `index.html` at repo root plus
+    `command-center/{css/style.css,js/app.js}`: a static, no-build-step SPA
+    with hash routing, a Real/Sample data-mode toggle (persisted to
+    localStorage), a "Data as of" freshness stamp (warns past 7 days) shown
+    on every tab, and all 9 tabs reachable from nav. Only Overview is fully
+    built (headline stats + 4 drill-down pages, all reading live from the
+    fetched JSON, no hardcoded plan content); the other 8 tabs render an
+    honest "Not built yet — say build the rest" stub with a one-line
+    description of what's planned, per the brief's explicit pause point.
+    `.colaberry/progress.json` carries STORY-000 with all 5 Done-means
+    criteria present and `"passed": false` on all of them (build is
+    intentionally incomplete at this checkpoint). GitHub push webhook setup
+    (brief's Step 1) was offered and explicitly skipped by the user.
+  - Verification: Served the site locally (`python -m http.server`) and
+    loaded every route (Overview + its 4 drill-downs, all 8 stub tabs)
+    headlessly via `chrome.exe --headless=new --enable-logging=stderr`,
+    confirming no console errors/exceptions on any route. Spot-checked
+    rendered DOM (`--dump-dom`) for the Overview stats grid, the Stories
+    drill-down table (20 rows, joined from plan.json + progress.json), and
+    a stub tab's empty state. Screenshotted the Overview tab — headline
+    cards read "0 of 20" stories verified, "0 of 5" criteria, "0" points,
+    correctly computed "Initial Audio Processing (r0)" as the current
+    release from today's date against `plan.releases`. Confirmed no
+    `COLABERRY:BEGIN`/`END` markers exist in root `CLAUDE.md` so it was left
+    untouched, and `docs/stories/STORY-000.md` was deliberately not created
+    since `docs/` is platform-owned and rewritten on sync.
+  - Notes: Not yet committed/pushed — awaiting the user's review of the
+    Overview tab before proceeding to "build the rest" (the other 8 tabs)
+    and Step 3 (tick genuinely-true criteria, commit naming STORY-000,
+    push). GitHub Pages (Step 4) also not yet turned on, pending the same
+    go-ahead.
