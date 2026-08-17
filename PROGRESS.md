@@ -273,3 +273,72 @@
     and Step 3 (tick genuinely-true criteria, commit naming STORY-000,
     push). GitHub Pages (Step 4) also not yet turned on, pending the same
     go-ahead.
+
+- [x] Build the Meeting Assistant Command Center (STORY-000) — build the rest + Step 3
+  - Date: 2026-08-17
+  - Session: CC-20260817-k4n7
+  - What changed: User approved "build the rest." Implemented the remaining
+    8 tabs in `command-center/js/app.js`, all reading `.colaberry/plan.json`
+    and `progress.json` at runtime, no plan content hardcoded: Outcomes
+    (real = honest empty state since `plan.derived.measures` is empty;
+    sample = 3 illustrative measure cards, clearly labelled); Users & Use
+    Case (roles grouped by parsing "As a &lt;role&gt;, I want" out of each
+    story's own `narrative` field — nothing hardcoded); Guardrails (REQ-013/
+    REQ-015 enforcement computed live from `fulfilled_by` → story
+    `verification.state`, worded "not yet enforced" rather than a false
+    green); Systems (all 5 systems render grey "not checked from here" /
+    "never" in real mode — no fabricated green); Project Management (inline
+    SVG-free CSS Gantt of the 5 releases positioned by date math, r1 marked
+    demo target, full task table with due/baseline dates and per-story
+    drill-down); AI Agents (plan.agents is empty, so built from `story.owner`
+    grouping instead, explicitly labelled "owners, not scoped AI agents";
+    real mode shows "No runs recorded", never a fake 0% success rate);
+    Knowledge Base (full requirements↔stories traceability table, surfaces
+    REQ-019's empty `fulfilled_by` as a real gap; added an offline
+    keyword-matching "Ask" panel — pure client-side token-overlap search
+    over the loaded plan data, no external API/key, answers "I can't answer
+    that from the current data" when nothing matches well enough); Data
+    Model (11 entities derived from the requirements — `Meeting`,
+    `AudioRecording`, `TranscriptSegment`, `Speaker`, `Attendee`,
+    `DiscussionTopic`, `Decision`, `ActionItem`, `ReviewGate`, `EmailDraft`,
+    `TrackerExport` — domain terms, not vendor names, each card linking back
+    to the requirements that justify it). Added a coherent sample-data
+    overlay (`SAMPLE_STORY_STATES`, `SAMPLE_SYSTEMS`, `SAMPLE_AGENT_RUNS`,
+    `SAMPLE_MEASURES`) shared across all tabs so Sample mode tells one
+    consistent story instead of disjointed fake numbers per tab; refactored
+    the two existing Overview drill-downs (Stories, Release) to route
+    through the same `storyState()` helper so they respect the toggle too.
+    Removed the "build paused" banner from Overview now that all 9 tabs are
+    real. Then finished Step 3: reconciled `.colaberry/progress.json` —
+    all 5 STORY-000 criteria flipped `false → true` (see verification),
+    `criteria_passed` 0→5, STORY-000 `verification.state` `in_progress` →
+    `submitted` (verified is the platform's call, not mine); bumped
+    `.colaberry/manifest.json` `generated_at` since the underlying data
+    genuinely changed.
+  - Verification: Headless-Chrome swept every route in both Real and Sample
+    mode (all 9 tabs × their drill-downs — 30 routes real, 21 routes
+    sample) via `chrome.exe --headless=new --enable-logging=stderr`,
+    zero JS errors/exceptions on any of them (Sample mode driven through a
+    persistent `--user-data-dir` profile since `localStorage` needed to
+    survive across separate headless launches). Explicitly ran the brief's
+    own trust test: removed STORY-005 from `plan.json` via the Edit tool,
+    reloaded the Project Management tab, confirmed STORY-005 vanished from
+    both the Gantt task table and the route sweep — then restored the file
+    and diffed it byte-for-byte against the last commit to confirm an exact
+    match. (Caught and fixed a real bug in that process: an earlier
+    Python-based version of the same test round-tripped the file through
+    Windows' default non-UTF-8 text encoding and corrupted the em dash in
+    REQ-007/STORY-007 into mojibake — caught via `grep -c "u00e2\|u20ac"`,
+    fixed by rewriting the file with the Write tool instead of Python, and
+    the delete-test was then redone with the Edit tool to avoid the same
+    class of bug.) Screenshotted Overview, Project Management (Gantt +
+    task table), Knowledge Base (traceability table + Ask panel), and
+    Systems (all 5 rows grey/"never") — visually confirmed the em dash
+    renders correctly, REQ-019 shows red "gap — no story yet", and Systems
+    shows no fabricated green.
+  - Notes: All 5 Done-means criteria are now `true` and genuinely verified
+    against the finished build, not assumed. `docs/stories/STORY-000.md`
+    still deliberately not created (platform-owned, rewritten on sync).
+    Not yet committed/pushed — that's the very next step, with a commit
+    message naming STORY-000 per the brief. GitHub Pages (Step 4) still
+    not turned on.
