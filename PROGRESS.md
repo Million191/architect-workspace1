@@ -342,3 +342,98 @@
     Not yet committed/pushed — that's the very next step, with a commit
     message naming STORY-000 per the brief. GitHub Pages (Step 4) still
     not turned on.
+
+## 2026-08-19
+
+- [x] STORY-001 — Ingest audio from virtual sources (Zoom, Teams, Meet)
+  - Date: 2026-08-19
+  - Session: CC-20260818-t9v2
+  - What changed: Built the backend foundation for the Meeting Assistant
+    project (nothing existed before this — `backend/` is new) and
+    implemented REQ-001: live audio ingestion from Zoom, Microsoft Teams,
+    and Google Meet, worked as a paced co-pilot (one small step at a time,
+    confirmed before each). Node.js/npm were not installed on this machine;
+    installed Node LTS (v24.19.0) via `winget install OpenJS.NodeJS.LTS`
+    (first attempt failed on the `msstore` source's cert check — same TLS
+    interception noted in the 2026-08-09 GitHub-push entry — retried scoped
+    to `--source winget`, which succeeded) so the backend could follow
+    CLAUDE.md's Node+Express+TypeScript stack with real `tsc`/test
+    execution instead of working around the gap in Python. Stack: Express
+    4 + TypeScript 5 (strict) + Zod request validation + Jest/ts-jest/
+    supertest, Node's native `fetch` (no HTTP client dependency added).
+    Structure: `backend/src/server.ts` (app + `/health`), `backend/src/
+    routes/audioIngestion.ts` (`POST /api/audio/ingest/{zoom,teams,meet}`,
+    Zod-validated `{ meetingRef }` body, one shared error→HTTP-status
+    handler), `backend/src/services/audioIngestion/` — `types.ts` (shared
+    `PlatformClient`/`PlatformRecording` contract every platform client
+    implements), `errors.ts` (typed error hierarchy — Unsupported
+    Format/CorruptedAudio/UpstreamTimeout/UpstreamUnavailable/
+    UpstreamRejected/ContractViolation/Configuration — each with a stable
+    `errorClass` per the Observability rules, no generic `Error` in logs),
+    `withTimeoutAndRetry.ts` (explicit per-attempt timeout + capped
+    retries + backoff for every outbound call), `zoomClient.ts` (Zoom
+    Server-to-Server OAuth + Cloud Recording API), `teamsClient.ts`
+    (Microsoft Graph client-credentials OAuth + onlineMeetings recordings,
+    HEAD request for size since Graph's list response omits it),
+    `meetClient.ts` (Google service-account JWT-bearer OAuth, hand-signed
+    with Node's `crypto.createSign('RSA-SHA256')` rather than adding the
+    `googleapis` dependency, + Meet API + Drive metadata lookup for size),
+    and `audioIngestionService.ts` (format/corruption validation, source
+    logging, and — added during the hardening pass — an in-flight-request
+    map that coalesces concurrent identical `(platform, meetingRef)`
+    requests into one upstream call). Idempotency is keyed on
+    `${platform}:${sourceRecordingId}` in an in-memory `Map`; explicitly
+    commented as a `TODO(pre-persistence)` since there's no database layer
+    yet to hold a real unique constraint — dedup only holds within one
+    running process, not across restarts. `backend/.env.example` documents
+    every required env var per platform (names only, no values).
+  - Verification: `tsc --noEmit` clean throughout. `npm test` (Jest):
+    61/61 passing across 8 suites, covering per platform: happy path
+    (201, `available_for_transcription`), unsupported-format rejection
+    (422, matches acceptance criterion 2), corrupted file — zero-byte and
+    missing-download-URL (422), upstream timeout (504) and 5xx (502) not
+    swallowed, missing-body validation (400) with zero upstream calls,
+    idempotent double-ingest (no duplicate, dedup logged, matches Trust
+    criterion via the source-logging assertion), and missing-credentials
+    fails loud with `ConfigurationError` (500) naming the missing env
+    vars rather than crashing. Ran an explicit BREAK-phase probe (per
+    CLAUDE.md's Build-Break-Harden loop) that found two real bugs before
+    they shipped: (1) two concurrent requests for the same meeting hit
+    the upstream API twice — fixed with the in-flight-request coalescing
+    described above, verified by a test asserting the upstream call count
+    drops from 2 to 1; (2) malformed JSON bodies already 400'd via
+    Express's default handler but with an empty, inconsistent body —
+    added explicit JSON-parse-error middleware in `server.ts` so it
+    matches the `{error, message}` shape used everywhere else, verified
+    by a new `server.test.ts` case (this maps to the "network failure
+    during upload" failure path in spirit — malformed/interrupted request
+    bodies — the literal network-failure case is covered by the upstream
+    timeout/5xx tests above). Acceptance criteria 1 and 2 verified
+    directly by the route tests; the Trust criterion (source is logged)
+    verified by asserting on the structured `audio_ingested` log event's
+    `platform` field in `audioIngestionService.test.ts`.
+  - Notes: Two decisions made without stopping to ask, logged here per
+    the autonomy rules (both implementation-level, reversible, low blast
+    radius): (1) request field named `meetingRef` rather than
+    `meetingId`, since Teams/Meet identify a recording by an online-
+    meeting/conference-record reference, not a numeric meeting id like
+    Zoom's — a shared generic name fits the now-common `PlatformClient`
+    contract better. (2) Added `mp4` to `SUPPORTED_AUDIO_FORMATS` — Teams
+    and Meet cloud recordings are always delivered as MP4 (video
+    container, AAC audio track); there's no separate audio-only export
+    like Zoom's M4A type, so without this, Teams/Meet ingestion could
+    never succeed against real data. Genuinely stopped and asked the user
+    twice this session per the story's own "stop and ask" rule rather
+    than assuming: once when Node.js wasn't installed (stack choice —
+    user chose "install Node" over "build in Python"), and once when the
+    user said they need live platform API integration, which requires
+    Zoom/Azure AD/Google Cloud developer credentials nobody has yet (user
+    chose "build all three now, credential-ready" over "one platform at a
+    time"). **All three platform integrations are verified only against
+    each platform's documented API shape (mocked HTTP), not a live
+    account — no real Zoom, Azure AD, or Google Cloud credentials exist
+    for this project.** `backend/.env.example` names what's needed to
+    close that gap. STORY-002 (physical-source ingestion) and STORY-003
+    (low-confidence-segment flagging) were deliberately left untouched,
+    per the brief. Not yet committed — commit is the very next step, with
+    a message naming STORY-001 per the brief.

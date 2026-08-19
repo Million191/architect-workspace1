@@ -1,0 +1,35 @@
+export type VirtualMeetingPlatform = 'zoom' | 'teams' | 'meet';
+
+// 'mp4' is here because Microsoft Teams cloud recordings are always delivered as an MP4
+// container (video + AAC audio track) — there's no separate audio-only export like Zoom's
+// M4A recording type. Rejecting mp4 would mean Teams ingestion could never succeed.
+export const SUPPORTED_AUDIO_FORMATS = ['mp3', 'wav', 'm4a', 'mp4'] as const;
+export type SupportedAudioFormat = (typeof SUPPORTED_AUDIO_FORMATS)[number];
+
+export interface IngestedAudio {
+  /** Idempotency key: derived from (source, sourceRecordingId) so re-ingesting is a no-op. */
+  id: string;
+  source: VirtualMeetingPlatform;
+  sourceRecordingId: string;
+  format: SupportedAudioFormat;
+  sizeBytes: number;
+  ingestedAt: string;
+  status: 'available_for_transcription';
+}
+
+/** One media file attached to a platform's recording, in a shape common across platforms. */
+export interface PlatformRecordingFile {
+  id: string;
+  fileExtension: string;
+  fileSizeBytes: number;
+  downloadUrl: string | null;
+}
+
+export interface PlatformRecording {
+  files: PlatformRecordingFile[];
+}
+
+/** What every virtual-platform client (Zoom, Teams, Meet) must implement. */
+export interface PlatformClient {
+  fetchRecording(meetingRef: string): Promise<PlatformRecording>;
+}
