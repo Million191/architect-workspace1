@@ -437,3 +437,92 @@
     (low-confidence-segment flagging) were deliberately left untouched,
     per the brief. Not yet committed — commit is the very next step, with
     a message naming STORY-001 per the brief.
+
+- [x] STORY-002 — Ingest audio from physical sources (room mic, phone)
+  - Date: 2026-08-20
+  - Session: CC-20260818-t9v2
+  - What changed: Implemented REQ-002 by extending STORY-001's backend
+    rather than rebuilding it, per the brief's explicit "reuse it, do not
+    rebuild it" instruction. New `POST /api/audio/ingest/physical`
+    (`backend/src/routes/physicalAudioIngestion.ts`) accepts a multipart
+    file upload (`multer`, memory storage, 200MB cap) with a `source`
+    field (`room_mic`|`phone`). Before writing any multer code, `npm
+    install` flagged multer 1.x as carrying known CVEs patched in 2.x, so
+    used `multer@^2.2.0`/`@types/multer@^2.2.0` instead of the originally
+    planned 1.x — 0 vulnerabilities on the final install. Stopped and
+    asked the user first (per the story's own "stop and ask" rule) about
+    a real contradiction in the brief: STORY-002's acceptance criteria
+    requires low-confidence flagging for noisy audio, but the same brief
+    lists STORY-003 as owning that exact capability and says not to build
+    it yet. User chose "build a minimal flag now"; documenting that choice
+    here rather than silently picking a side. Two new validation layers,
+    kept deliberately distinct so they map to the two different failure
+    paths this story lists: `backend/src/services/audioIngestion/
+    audioFormatSniffer.ts` reads magic bytes (RIFF/WAVE, ID3/MPEG frame
+    sync, ISO-BMFF ftyp brand) to identify the file's real format,
+    independent of its claimed extension — extension not in
+    `SUPPORTED_AUDIO_FORMATS` → `UnsupportedFormatError`; content doesn't
+    match any signature, or mismatches the claimed extension →
+    `CorruptedAudioError` (this one check covers empty files, truncated
+    uploads, and mislabeled files at once).
+    `audioQualityAssessment.ts` implements the low-confidence heuristic:
+    for 16-bit PCM WAV it parses the real `fmt `/`data` chunk structure
+    with plain `Buffer` math (no new dependency) and computes RMS
+    amplitude + clipping ratio against fixed thresholds; for compressed
+    formats (mp3/m4a/mp4), which can't be decoded without a real decoder
+    library, it flags conservatively with an honest "no decoder available"
+    reason rather than fabricating a pass — logged as a known limitation,
+    not hidden. `physicalAudioIngestionService.ts` wires validation +
+    quality assessment together and switched idempotency to a SHA-256
+    content hash (`physical:${source}:${hash}`) instead of a
+    platform-supplied id, since there isn't one for an upload — re-posting
+    identical bytes is a natural no-op. Extended the shared `IngestedAudio`
+    type with optional `lowConfidence`/`lowConfidenceReason` fields
+    (absent, not `false`, for virtual sources — STORY-001 doesn't assess
+    quality, so "absent" means "not assessed" rather than "assessed and
+    fine"; kept optional specifically so STORY-001's existing service file
+    didn't need touching, honoring the brief's "don't change a file
+    outside this story" rule). Also extracted the error→HTTP-status
+    mapping that STORY-001 had inlined in `routes/audioIngestion.ts` into
+    a new shared `routes/errorResponse.ts`, since the physical route
+    needed the identical mapping and copy-pasting it a second time was the
+    wrong call — both routers use it now, behavior unchanged.
+  - Verification: `tsc --noEmit` clean. `npm test`: 100/100 passing across
+    12 suites (up from 61 after STORY-001), covering: happy path (201,
+    `available_for_transcription`, `lowConfidence: false`) for both
+    `room_mic` and `phone`; the noisy-recording acceptance criterion
+    proven twice — once at the service layer and once over a real HTTP
+    round-trip — with a synthetic quiet WAV coming back
+    `lowConfidence: true` plus a human-readable reason; unsupported
+    extension (422); empty file (422 corrupted); extension/content
+    mismatch, e.g. an MP3 byte stream named `.wav` (422 corrupted);
+    missing `source`/missing file (400); idempotent re-upload (same id,
+    no duplicate). Ran an explicit BREAK-phase probe pass per CLAUDE.md's
+    Build-Break-Harden loop against three scenarios: an oversized upload
+    (correctly 413, not a crash), a malformed multipart body (correctly
+    400 via multer's own error path, not a 500), and two concurrent
+    identical uploads (correctly deduped, store size stayed at 1). Unlike
+    STORY-001's virtual-platform code, all three already behaved
+    correctly — no new bugs found, so no new hardening code was needed;
+    reasoned through why concurrency is safe here (unlike STORY-001):
+    `ingestPhysicalRecording` never `await`s internally, so two requests
+    can't interleave mid-check the way STORY-001's async
+    `client.fetchRecording()` call allowed. All three probes were kept as
+    permanent regression tests rather than thrown away (made the upload
+    size limit configurable on the router specifically so the 413 case
+    could be tested without a real 200MB upload).
+  - Notes: Confidence 70% — slightly lower than STORY-001's 75%, for two
+    reasons specific to this story. First, the low-confidence heuristic
+    only does real signal analysis for 16-bit PCM WAV; compressed formats
+    (which real phone recordings very often are) get a conservative
+    always-flagged placeholder, not real analysis — this satisfies the
+    acceptance criterion's letter but not its spirit for a large fraction
+    of realistic physical-source uploads, and STORY-003 may be expected to
+    close that gap with a real decoder. Second, the idempotency store
+    remains in-memory only (same `TODO(pre-persistence)` as STORY-001) —
+    now proven race-free within a process, but still not safe across
+    restarts or multiple server instances. What would raise confidence:
+    a real decoder (even a small one) for compressed-format quality
+    analysis, and a persisted uniqueness constraint once a database layer
+    exists. Not yet committed — commit is the very next step, with a
+    message naming STORY-002 per the brief.

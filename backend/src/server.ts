@@ -1,5 +1,6 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
 import { createAudioIngestionRouter } from './routes/audioIngestion';
+import { createPhysicalAudioIngestionRouter } from './routes/physicalAudioIngestion';
 
 function isJsonParseError(err: unknown): boolean {
   return err instanceof SyntaxError && 'status' in err && (err as { status?: number }).status === 400 && 'body' in err;
@@ -24,6 +25,7 @@ export function createApp(): Express {
   });
 
   app.use('/api/audio', createAudioIngestionRouter());
+  app.use('/api/audio', createPhysicalAudioIngestionRouter());
 
   return app;
 }

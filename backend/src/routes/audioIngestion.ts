@@ -5,16 +5,8 @@ import { createZoomClient } from '../services/audioIngestion/zoomClient';
 import { createTeamsClient } from '../services/audioIngestion/teamsClient';
 import { createMeetClient } from '../services/audioIngestion/meetClient';
 import { PlatformClient, VirtualMeetingPlatform } from '../services/audioIngestion/types';
-import {
-  CorruptedAudioError,
-  UnsupportedFormatError,
-  UpstreamRejectedError,
-  UpstreamTimeoutError,
-  UpstreamUnavailableError,
-  ContractViolationError,
-  ConfigurationError,
-  IngestionError,
-} from '../services/audioIngestion/errors';
+import { ConfigurationError } from '../services/audioIngestion/errors';
+import { statusForIngestionError, errorClassOf } from './errorResponse';
 
 function requireEnv(names: string[]): Record<string, string> | ConfigurationError {
   const values: Record<string, string> = {};
@@ -58,17 +50,6 @@ function buildMeetClientFromEnv(): PlatformClient {
   });
 }
 
-function statusForError(error: unknown): { status: number; message: string } {
-  if (error instanceof UnsupportedFormatError) return { status: 422, message: error.message };
-  if (error instanceof CorruptedAudioError) return { status: 422, message: error.message };
-  if (error instanceof ConfigurationError) return { status: 500, message: error.message };
-  if (error instanceof UpstreamRejectedError) return { status: 502, message: 'The meeting platform rejected the request.' };
-  if (error instanceof ContractViolationError) return { status: 502, message: 'The meeting platform returned an unexpected response.' };
-  if (error instanceof UpstreamTimeoutError) return { status: 504, message: 'The meeting platform timed out.' };
-  if (error instanceof UpstreamUnavailableError) return { status: 502, message: 'The meeting platform is unavailable.' };
-  return { status: 500, message: 'Audio ingestion failed unexpectedly.' };
-}
-
 const meetingRefRequestSchema = z.object({
   meetingRef: z.string().min(1, 'meetingRef is required'),
 });
@@ -92,8 +73,8 @@ async function handleIngestRequest(
     const ingested = await ingestVirtualMeetingRecording(platform, meetingRef, { client });
     res.status(201).json(ingested);
   } catch (error) {
-    const errorClass = error instanceof IngestionError ? error.errorClass : 'UnknownError';
-    const { status, message } = statusForError(error);
+    const errorClass = errorClassOf(error);
+    const { status, message } = statusForIngestionError(error);
 
     console.error(
       JSON.stringify({
