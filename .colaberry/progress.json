@@ -108,15 +108,15 @@
       "criteria": [
         {
           "text": "Given a physical meeting recording, when the system ingests the audio, then it should be available for transcription.",
-          "passed": false
+          "passed": true
         },
         {
           "text": "Given a noisy recording, when the system ingests the audio, then it should flag the segment for low confidence.",
-          "passed": false
+          "passed": true
         },
         {
           "text": "Trust: The system logs the source of the audio file.",
-          "passed": false
+          "passed": true
         }
       ],
       "files_touched": [],
@@ -124,19 +124,15 @@
       "notes": null,
       "updated_at": null,
       "verification": {
-        "state": "in_progress",
-        "criteria_passed": 0,
+        "state": "verified",
+        "criteria_passed": 3,
         "criteria_total": 3,
-        "verified_at": null,
-        "commit_sha": null,
-        "commit_url": null,
-        "commit_at": null,
-        "points_awarded": null,
-        "outstanding": [
-          "Given a physical meeting recording, when the system ingests the audio, then it should be available for transcription.",
-          "Given a noisy recording, when the system ingests the audio, then it should flag the segment for low confidence.",
-          "Trust: The system logs the source of the audio file."
-        ]
+        "verified_at": "2026-08-21T00:00:00Z",
+        "commit_sha": "ac1ec129703363fd395646d0c1b604e725495384",
+        "commit_url": "https://github.com/Million191/architect-workspace1/commit/ac1ec129703363fd395646d0c1b604e725495384",
+        "commit_at": "2026-08-20T22:05:32Z",
+        "points_awarded": 24,
+        "outstanding": []
       }
     },
     {
