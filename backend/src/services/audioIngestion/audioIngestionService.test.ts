@@ -25,6 +25,7 @@ describe('ingestVirtualMeetingRecording', () => {
     expect(result.source).toBe('zoom');
     expect(result.format).toBe('m4a');
     expect(result.sourceRecordingId).toBe('file-1');
+    expect(result.downloadUrl).toBe('https://zoom.example/file-1');
 
     const [event, context] = logger.calls[0];
     expect(event).toBe('audio_ingested');

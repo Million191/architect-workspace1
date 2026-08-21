@@ -15,6 +15,12 @@ export interface IngestedAudio {
   sourceRecordingId: string;
   format: SupportedAudioFormat;
   sizeBytes: number;
+  /**
+   * Where transcription fetches the actual audio bytes from. Only set for virtual-source
+   * ingestion (Zoom/Teams/Meet), which fetches from a platform-hosted URL; absent for
+   * physical sources, which are ingested from an uploaded buffer with no URL to carry.
+   */
+  downloadUrl?: string;
   ingestedAt: string;
   status: 'available_for_transcription';
   /**

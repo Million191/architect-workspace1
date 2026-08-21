@@ -126,6 +126,7 @@ async function performIngest(
     sourceRecordingId: audioFile.id,
     format: toSupportedFormat(audioFile.fileExtension) as SupportedAudioFormat,
     sizeBytes: audioFile.fileSizeBytes,
+    downloadUrl: audioFile.downloadUrl,
     ingestedAt: new Date().toISOString(),
     status: 'available_for_transcription',
   };

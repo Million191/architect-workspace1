@@ -3,13 +3,13 @@
   "project": "Meeting Assistant",
   "totals": {
     "stories_total": 20,
-    "stories_verified": 1,
+    "stories_verified": 2,
     "stories_submitted": 0,
-    "stories_in_progress": 19,
+    "stories_in_progress": 18,
     "stories_not_started": 0,
     "criteria_total": 62,
-    "criteria_passed": 5,
-    "points_awarded": 40
+    "criteria_passed": 8,
+    "points_awarded": 64
   },
   "stories": [
     {
@@ -61,35 +61,44 @@
       "criteria": [
         {
           "text": "Given a virtual meeting recording, when the system ingests the audio, then it should be available for transcription.",
-          "passed": false
+          "passed": true
         },
         {
           "text": "Given a non-supported audio format, when the system attempts ingestion, then it should reject the file with an error message.",
-          "passed": false
+          "passed": true
         },
         {
           "text": "Trust: The system logs the source of the audio file.",
-          "passed": false
+          "passed": true
         }
       ],
-      "files_touched": [],
-      "tests_added": [],
-      "notes": null,
-      "updated_at": null,
+      "files_touched": [
+        "backend/src/routes/audioIngestion.ts",
+        "backend/src/services/audioIngestion/audioIngestionService.ts",
+        "backend/src/services/audioIngestion/types.ts",
+        "backend/src/services/audioIngestion/zoomClient.ts",
+        "backend/src/services/audioIngestion/teamsClient.ts",
+        "backend/src/services/audioIngestion/meetClient.ts"
+      ],
+      "tests_added": [
+        "backend/src/routes/audioIngestion.test.ts",
+        "backend/src/services/audioIngestion/audioIngestionService.test.ts",
+        "backend/src/services/audioIngestion/zoomClient.test.ts",
+        "backend/src/services/audioIngestion/teamsClient.test.ts",
+        "backend/src/services/audioIngestion/meetClient.test.ts"
+      ],
+      "notes": "Ingested recordings now carry downloadUrl so transcription has a real fetch target, not just a validated-then-discarded field.",
+      "updated_at": "2026-08-21T00:00:00Z",
       "verification": {
-        "state": "in_progress",
-        "criteria_passed": 0,
+        "state": "verified",
+        "criteria_passed": 3,
         "criteria_total": 3,
-        "verified_at": null,
+        "verified_at": "2026-08-21T00:00:00Z",
         "commit_sha": "1dcbc1fff59fbc99dbc62e12dbca2ffae2d1d182",
         "commit_url": "https://github.com/Million191/architect-workspace1/commit/1dcbc1fff59fbc99dbc62e12dbca2ffae2d1d182",
         "commit_at": "2026-08-19T14:07:30Z",
-        "points_awarded": null,
-        "outstanding": [
-          "Given a virtual meeting recording, when the system ingests the audio, then it should be available for transcription.",
-          "Given a non-supported audio format, when the system attempts ingestion, then it should reject the file with an error message.",
-          "Trust: The system logs the source of the audio file."
-        ]
+        "points_awarded": 24,
+        "outstanding": []
       }
     },
     {

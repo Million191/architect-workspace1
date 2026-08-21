@@ -526,3 +526,38 @@
     analysis, and a persisted uniqueness constraint once a database layer
     exists. Not yet committed — commit is the very next step, with a
     message naming STORY-002 per the brief.
+
+## 2026-08-21
+
+- [x] STORY-001 — carry download URL through, mark acceptance criteria passing
+  - Date: 2026-08-21
+  - Session: CC-20260821-b7q3
+  - What changed: Re-verified STORY-001 (already implemented in
+    `1dcbc1f`, 100/100 tests passing) against its Definition of Done and
+    found one real gap: `audioIngestionService.ts` validated that each
+    platform recording file had a `downloadUrl` before accepting it, then
+    discarded that URL — the returned `IngestedAudio` gave a downstream
+    transcription step no way to actually fetch the audio bytes. Added
+    `downloadUrl` to `IngestedAudio` (`types.ts`) and populated it in
+    `audioIngestionService.ts`. Made the field optional rather than
+    required, specifically to avoid touching
+    `physicalAudioIngestionService.ts` (STORY-002's file, uploaded audio
+    has no remote URL to carry) — required would have forced an
+    out-of-story edit, which CLAUDE.md's guardrails call out as a stop-
+    and-ask condition. Added a test assertion for the carried URL and
+    flipped `.colaberry/progress.json`'s three STORY-001 acceptance
+    criteria to `passed: true` (all three independently verified: happy
+    path 201 + `available_for_transcription`, unsupported-format 422,
+    and source logging via the `audio_ingested`/`audio_ingestion_failed`
+    structured log events).
+  - Verification: `tsc --noEmit` clean. `npx jest`: 100/100 passing
+    across 12 suites (unchanged count — this was a type/field addition
+    plus one new assertion on an existing test, not new test files).
+  - Notes: Confidence 85% unchanged from the prior check-in — the gap
+    closed here was a real but narrow one; the credential-verification
+    gap noted then (no live Zoom/Azure AD/Google Cloud creds to test
+    against) still stands and is the main thing that would raise it
+    further. `points_awarded: 24` for STORY-001 in progress.json is an
+    assumption (8 pts/criterion, matching STORY-000's 40/5 ratio — no
+    explicit per-story point value exists in `plan.json`); flagged here
+    since the portal, not Claude Code, may own that computation.
