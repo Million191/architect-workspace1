@@ -1,42 +1,780 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "project": "Meeting Assistant",
   "totals": {
     "stories_total": 20,
-    "stories_verified": 0,
-    "criteria_total": 5,
+    "stories_verified": 1,
+    "stories_submitted": 0,
+    "stories_in_progress": 19,
+    "stories_not_started": 0,
+    "criteria_total": 62,
     "criteria_passed": 5,
-    "points_awarded": 0
+    "points_awarded": 40
   },
   "stories": [
     {
       "id": "STORY-000",
-      "verification": { "state": "submitted", "commit": null, "points": 0 },
+      "release": null,
+      "acceptance_total": 5,
       "criteria": [
-        { "text": "Given the Command Center, when it is opened, then every tab is reachable and every card drills down one level.", "passed": true },
-        { "text": "Given sample mode, when any tab is shown, then the sample data is visibly labelled as sample.", "passed": true },
-        { "text": "Given the data files, when any tab renders, then its content comes from .colaberry/plan.json and .colaberry/progress.json read at runtime rather than from hard-coded values.", "passed": true },
-        { "text": "Given .colaberry/manifest.json, when any tab is shown, then it displays how old the data is and warns when that age exceeds a week.", "passed": true },
-        { "text": "Trust — no tab shows a number, a connection or a result the project has not actually produced.", "passed": true }
-      ]
+        {
+          "text": "Given the Command Center, when it is opened, then every tab is reachable and every card drills down one level.",
+          "passed": true
+        },
+        {
+          "text": "Given sample mode, when any tab is shown, then the sample data is visibly labelled as sample.",
+          "passed": true
+        },
+        {
+          "text": "Given the Command Center, when any tab renders, then .colaberry/plan.json and .colaberry/progress.json are both committed in this repo and every tab reads its content from them at runtime rather than from hard-coded values.",
+          "passed": true
+        },
+        {
+          "text": "Given the Command Center, when any tab is shown, then .colaberry/manifest.json is committed in this repo and every tab shows how old that data is and warns when the age exceeds a week.",
+          "passed": true
+        },
+        {
+          "text": "Trust — no tab shows a number, a connection or a result the project has not actually produced.",
+          "passed": true
+        }
+      ],
+      "files_touched": [],
+      "tests_added": [],
+      "notes": null,
+      "updated_at": null,
+      "verification": {
+        "state": "verified",
+        "criteria_passed": 5,
+        "criteria_total": 5,
+        "verified_at": "2026-08-18T22:08:49.937Z",
+        "commit_sha": "49e147aff1a2317e8f4e8a450b8eea73fd6589ce",
+        "commit_url": "https://github.com/Million191/architect-workspace1/commit/49e147aff1a2317e8f4e8a450b8eea73fd6589ce",
+        "commit_at": "2026-08-17T22:02:40Z",
+        "points_awarded": 40,
+        "outstanding": []
+      }
     },
-    { "id": "STORY-001", "verification": { "state": "not_started", "commit": null, "points": 0 } },
-    { "id": "STORY-002", "verification": { "state": "not_started", "commit": null, "points": 0 } },
-    { "id": "STORY-003", "verification": { "state": "not_started", "commit": null, "points": 0 } },
-    { "id": "STORY-004", "verification": { "state": "not_started", "commit": null, "points": 0 } },
-    { "id": "STORY-005", "verification": { "state": "not_started", "commit": null, "points": 0 } },
-    { "id": "STORY-006", "verification": { "state": "not_started", "commit": null, "points": 0 } },
-    { "id": "STORY-007", "verification": { "state": "not_started", "commit": null, "points": 0 } },
-    { "id": "STORY-008", "verification": { "state": "not_started", "commit": null, "points": 0 } },
-    { "id": "STORY-009", "verification": { "state": "not_started", "commit": null, "points": 0 } },
-    { "id": "STORY-010", "verification": { "state": "not_started", "commit": null, "points": 0 } },
-    { "id": "STORY-011", "verification": { "state": "not_started", "commit": null, "points": 0 } },
-    { "id": "STORY-012", "verification": { "state": "not_started", "commit": null, "points": 0 } },
-    { "id": "STORY-013", "verification": { "state": "not_started", "commit": null, "points": 0 } },
-    { "id": "STORY-014", "verification": { "state": "not_started", "commit": null, "points": 0 } },
-    { "id": "STORY-015", "verification": { "state": "not_started", "commit": null, "points": 0 } },
-    { "id": "STORY-016", "verification": { "state": "not_started", "commit": null, "points": 0 } },
-    { "id": "STORY-017", "verification": { "state": "not_started", "commit": null, "points": 0 } },
-    { "id": "STORY-018", "verification": { "state": "not_started", "commit": null, "points": 0 } },
-    { "id": "STORY-019", "verification": { "state": "not_started", "commit": null, "points": 0 } }
+    {
+      "id": "STORY-001",
+      "release": "r0",
+      "acceptance_total": 3,
+      "criteria": [
+        {
+          "text": "Given a virtual meeting recording, when the system ingests the audio, then it should be available for transcription.",
+          "passed": false
+        },
+        {
+          "text": "Given a non-supported audio format, when the system attempts ingestion, then it should reject the file with an error message.",
+          "passed": false
+        },
+        {
+          "text": "Trust: The system logs the source of the audio file.",
+          "passed": false
+        }
+      ],
+      "files_touched": [],
+      "tests_added": [],
+      "notes": null,
+      "updated_at": null,
+      "verification": {
+        "state": "in_progress",
+        "criteria_passed": 0,
+        "criteria_total": 3,
+        "verified_at": null,
+        "commit_sha": "1dcbc1fff59fbc99dbc62e12dbca2ffae2d1d182",
+        "commit_url": "https://github.com/Million191/architect-workspace1/commit/1dcbc1fff59fbc99dbc62e12dbca2ffae2d1d182",
+        "commit_at": "2026-08-19T14:07:30Z",
+        "points_awarded": null,
+        "outstanding": [
+          "Given a virtual meeting recording, when the system ingests the audio, then it should be available for transcription.",
+          "Given a non-supported audio format, when the system attempts ingestion, then it should reject the file with an error message.",
+          "Trust: The system logs the source of the audio file."
+        ]
+      }
+    },
+    {
+      "id": "STORY-002",
+      "release": "r0",
+      "acceptance_total": 3,
+      "criteria": [
+        {
+          "text": "Given a physical meeting recording, when the system ingests the audio, then it should be available for transcription.",
+          "passed": false
+        },
+        {
+          "text": "Given a noisy recording, when the system ingests the audio, then it should flag the segment for low confidence.",
+          "passed": false
+        },
+        {
+          "text": "Trust: The system logs the source of the audio file.",
+          "passed": false
+        }
+      ],
+      "files_touched": [],
+      "tests_added": [],
+      "notes": null,
+      "updated_at": null,
+      "verification": {
+        "state": "in_progress",
+        "criteria_passed": 0,
+        "criteria_total": 3,
+        "verified_at": null,
+        "commit_sha": null,
+        "commit_url": null,
+        "commit_at": null,
+        "points_awarded": null,
+        "outstanding": [
+          "Given a physical meeting recording, when the system ingests the audio, then it should be available for transcription.",
+          "Given a noisy recording, when the system ingests the audio, then it should flag the segment for low confidence.",
+          "Trust: The system logs the source of the audio file."
+        ]
+      }
+    },
+    {
+      "id": "STORY-003",
+      "release": "r0",
+      "acceptance_total": 3,
+      "criteria": [
+        {
+          "text": "Given a physical audio segment with crosstalk, when the system processes it, then it should flag it for low confidence.",
+          "passed": false
+        },
+        {
+          "text": "Given a clear audio segment, when the system processes it, then it should not flag it for low confidence.",
+          "passed": false
+        },
+        {
+          "text": "Trust: The system logs flagged segments for review.",
+          "passed": false
+        }
+      ],
+      "files_touched": [],
+      "tests_added": [],
+      "notes": null,
+      "updated_at": null,
+      "verification": {
+        "state": "in_progress",
+        "criteria_passed": 0,
+        "criteria_total": 3,
+        "verified_at": null,
+        "commit_sha": null,
+        "commit_url": null,
+        "commit_at": null,
+        "points_awarded": null,
+        "outstanding": [
+          "Given a physical audio segment with crosstalk, when the system processes it, then it should flag it for low confidence.",
+          "Given a clear audio segment, when the system processes it, then it should not flag it for low confidence.",
+          "Trust: The system logs flagged segments for review."
+        ]
+      }
+    },
+    {
+      "id": "STORY-004",
+      "release": "r0",
+      "acceptance_total": 3,
+      "criteria": [
+        {
+          "text": "Given a virtual meeting recording, when the system processes it, then it should tag the output with [Virtual — Platform].",
+          "passed": false
+        },
+        {
+          "text": "Given a physical meeting recording, when the system processes it, then it should tag the output with [In-Person — Location].",
+          "passed": false
+        },
+        {
+          "text": "Trust: The system logs the tagging information.",
+          "passed": false
+        }
+      ],
+      "files_touched": [],
+      "tests_added": [],
+      "notes": null,
+      "updated_at": null,
+      "verification": {
+        "state": "in_progress",
+        "criteria_passed": 0,
+        "criteria_total": 3,
+        "verified_at": null,
+        "commit_sha": null,
+        "commit_url": null,
+        "commit_at": null,
+        "points_awarded": null,
+        "outstanding": [
+          "Given a virtual meeting recording, when the system processes it, then it should tag the output with [Virtual — Platform].",
+          "Given a physical meeting recording, when the system processes it, then it should tag the output with [In-Person — Location].",
+          "Trust: The system logs the tagging information."
+        ]
+      }
+    },
+    {
+      "id": "STORY-005",
+      "release": "r1",
+      "acceptance_total": 3,
+      "criteria": [
+        {
+          "text": "Given an audio file, when the system transcribes it, then each line of text should have an associated timestamp.",
+          "passed": false
+        },
+        {
+          "text": "Given a corrupted audio file, when the system attempts transcription, then it should fail gracefully with an error message.",
+          "passed": false
+        },
+        {
+          "text": "Trust: The system logs transcription attempts and results.",
+          "passed": false
+        }
+      ],
+      "files_touched": [],
+      "tests_added": [],
+      "notes": null,
+      "updated_at": null,
+      "verification": {
+        "state": "in_progress",
+        "criteria_passed": 0,
+        "criteria_total": 3,
+        "verified_at": null,
+        "commit_sha": null,
+        "commit_url": null,
+        "commit_at": null,
+        "points_awarded": null,
+        "outstanding": [
+          "Given an audio file, when the system transcribes it, then each line of text should have an associated timestamp.",
+          "Given a corrupted audio file, when the system attempts transcription, then it should fail gracefully with an error message.",
+          "Trust: The system logs transcription attempts and results."
+        ]
+      }
+    },
+    {
+      "id": "STORY-006",
+      "release": "r1",
+      "acceptance_total": 3,
+      "criteria": [
+        {
+          "text": "Given an attendee list, when the system processes the audio, then it should map speakers to real names.",
+          "passed": false
+        },
+        {
+          "text": "Given no attendee list, when the system processes the audio, then it should label speakers as 'Unidentified Speaker'.",
+          "passed": false
+        },
+        {
+          "text": "Trust: The system logs speaker mapping attempts and results.",
+          "passed": false
+        }
+      ],
+      "files_touched": [],
+      "tests_added": [],
+      "notes": null,
+      "updated_at": null,
+      "verification": {
+        "state": "in_progress",
+        "criteria_passed": 0,
+        "criteria_total": 3,
+        "verified_at": null,
+        "commit_sha": null,
+        "commit_url": null,
+        "commit_at": null,
+        "points_awarded": null,
+        "outstanding": [
+          "Given an attendee list, when the system processes the audio, then it should map speakers to real names.",
+          "Given no attendee list, when the system processes the audio, then it should label speakers as 'Unidentified Speaker'.",
+          "Trust: The system logs speaker mapping attempts and results."
+        ]
+      }
+    },
+    {
+      "id": "STORY-007",
+      "release": "r1",
+      "acceptance_total": 3,
+      "criteria": [
+        {
+          "text": "Given an inaudible segment, when the system processes it, then it should mark it as [inaudible].",
+          "passed": false
+        },
+        {
+          "text": "Given a clear segment, when the system processes it, then it should not mark it as [inaudible].",
+          "passed": false
+        },
+        {
+          "text": "Trust: The system logs marked segments for review.",
+          "passed": false
+        }
+      ],
+      "files_touched": [],
+      "tests_added": [],
+      "notes": null,
+      "updated_at": null,
+      "verification": {
+        "state": "in_progress",
+        "criteria_passed": 0,
+        "criteria_total": 3,
+        "verified_at": null,
+        "commit_sha": null,
+        "commit_url": null,
+        "commit_at": null,
+        "points_awarded": null,
+        "outstanding": [
+          "Given an inaudible segment, when the system processes it, then it should mark it as [inaudible].",
+          "Given a clear segment, when the system processes it, then it should not mark it as [inaudible].",
+          "Trust: The system logs marked segments for review."
+        ]
+      }
+    },
+    {
+      "id": "STORY-008",
+      "release": "r2",
+      "acceptance_total": 3,
+      "criteria": [
+        {
+          "text": "Given a transcribed meeting, when the system generates the summary, then it should include title, date, time, format, platform/location, attendees, and objective.",
+          "passed": false
+        },
+        {
+          "text": "Given missing information, when the system generates the summary, then it should flag the missing fields for manual input.",
+          "passed": false
+        },
+        {
+          "text": "Trust: The system logs summary generation attempts and results.",
+          "passed": false
+        }
+      ],
+      "files_touched": [],
+      "tests_added": [],
+      "notes": null,
+      "updated_at": null,
+      "verification": {
+        "state": "in_progress",
+        "criteria_passed": 0,
+        "criteria_total": 3,
+        "verified_at": null,
+        "commit_sha": null,
+        "commit_url": null,
+        "commit_at": null,
+        "points_awarded": null,
+        "outstanding": [
+          "Given a transcribed meeting, when the system generates the summary, then it should include title, date, time, format, platform/location, attendees, and objective.",
+          "Given missing information, when the system generates the summary, then it should flag the missing fields for manual input.",
+          "Trust: The system logs summary generation attempts and results."
+        ]
+      }
+    },
+    {
+      "id": "STORY-009",
+      "release": "r2",
+      "acceptance_total": 3,
+      "criteria": [
+        {
+          "text": "Given a transcribed meeting, when the system summarizes discussion points, then it should group them by topic with timestamp references.",
+          "passed": false
+        },
+        {
+          "text": "Given unclear discussion points, when the system summarizes them, then it should flag them for review.",
+          "passed": false
+        },
+        {
+          "text": "Trust: The system logs discussion point summaries and flags.",
+          "passed": false
+        }
+      ],
+      "files_touched": [],
+      "tests_added": [],
+      "notes": null,
+      "updated_at": null,
+      "verification": {
+        "state": "in_progress",
+        "criteria_passed": 0,
+        "criteria_total": 3,
+        "verified_at": null,
+        "commit_sha": null,
+        "commit_url": null,
+        "commit_at": null,
+        "points_awarded": null,
+        "outstanding": [
+          "Given a transcribed meeting, when the system summarizes discussion points, then it should group them by topic with timestamp references.",
+          "Given unclear discussion points, when the system summarizes them, then it should flag them for review.",
+          "Trust: The system logs discussion point summaries and flags."
+        ]
+      }
+    },
+    {
+      "id": "STORY-010",
+      "release": "r2",
+      "acceptance_total": 3,
+      "criteria": [
+        {
+          "text": "Given a transcribed meeting, when the system lists decisions, then each decision should include rationale and approver with a timestamp.",
+          "passed": false
+        },
+        {
+          "text": "Given missing decision information, when the system lists decisions, then it should flag the missing fields for review.",
+          "passed": false
+        },
+        {
+          "text": "Trust: The system logs decision listing attempts and results.",
+          "passed": false
+        }
+      ],
+      "files_touched": [],
+      "tests_added": [],
+      "notes": null,
+      "updated_at": null,
+      "verification": {
+        "state": "in_progress",
+        "criteria_passed": 0,
+        "criteria_total": 3,
+        "verified_at": null,
+        "commit_sha": null,
+        "commit_url": null,
+        "commit_at": null,
+        "points_awarded": null,
+        "outstanding": [
+          "Given a transcribed meeting, when the system lists decisions, then each decision should include rationale and approver with a timestamp.",
+          "Given missing decision information, when the system lists decisions, then it should flag the missing fields for review.",
+          "Trust: The system logs decision listing attempts and results."
+        ]
+      }
+    },
+    {
+      "id": "STORY-011",
+      "release": "r2",
+      "acceptance_total": 3,
+      "criteria": [
+        {
+          "text": "Given a transcribed meeting, when the system extracts action items, then it should populate the table with owner, due date, priority, status, and source timestamp.",
+          "passed": false
+        },
+        {
+          "text": "Given unclear action items, when the system extracts them, then it should flag them for review.",
+          "passed": false
+        },
+        {
+          "text": "Trust: The system logs action item extraction attempts and results.",
+          "passed": false
+        }
+      ],
+      "files_touched": [],
+      "tests_added": [],
+      "notes": null,
+      "updated_at": null,
+      "verification": {
+        "state": "in_progress",
+        "criteria_passed": 0,
+        "criteria_total": 3,
+        "verified_at": null,
+        "commit_sha": null,
+        "commit_url": null,
+        "commit_at": null,
+        "points_awarded": null,
+        "outstanding": [
+          "Given a transcribed meeting, when the system extracts action items, then it should populate the table with owner, due date, priority, status, and source timestamp.",
+          "Given unclear action items, when the system extracts them, then it should flag them for review.",
+          "Trust: The system logs action item extraction attempts and results."
+        ]
+      }
+    },
+    {
+      "id": "STORY-012",
+      "release": "r3",
+      "acceptance_total": 3,
+      "criteria": [
+        {
+          "text": "Given draft minutes, when the system presents them for review, then it should wait for explicit approval before drafting emails.",
+          "passed": false
+        },
+        {
+          "text": "Given requested edits, when the system receives them, then it should revise and re-present the draft for review.",
+          "passed": false
+        },
+        {
+          "text": "Trust: The system logs review gate interactions and approvals.",
+          "passed": false
+        }
+      ],
+      "files_touched": [],
+      "tests_added": [],
+      "notes": null,
+      "updated_at": null,
+      "verification": {
+        "state": "in_progress",
+        "criteria_passed": 0,
+        "criteria_total": 3,
+        "verified_at": null,
+        "commit_sha": null,
+        "commit_url": null,
+        "commit_at": null,
+        "points_awarded": null,
+        "outstanding": [
+          "Given draft minutes, when the system presents them for review, then it should wait for explicit approval before drafting emails.",
+          "Given requested edits, when the system receives them, then it should revise and re-present the draft for review.",
+          "Trust: The system logs review gate interactions and approvals."
+        ]
+      }
+    },
+    {
+      "id": "STORY-013",
+      "release": "r3",
+      "acceptance_total": 3,
+      "criteria": [
+        {
+          "text": "Given approved draft minutes, when the system drafts emails, then each participant should receive an individualized email with their action items.",
+          "passed": false
+        },
+        {
+          "text": "Given a participant with no action items, when the system drafts emails, then it should state 'No action items assigned to you from this meeting.'",
+          "passed": false
+        },
+        {
+          "text": "Trust: The system logs email drafting attempts and results.",
+          "passed": false
+        }
+      ],
+      "files_touched": [],
+      "tests_added": [],
+      "notes": null,
+      "updated_at": null,
+      "verification": {
+        "state": "in_progress",
+        "criteria_passed": 0,
+        "criteria_total": 3,
+        "verified_at": null,
+        "commit_sha": null,
+        "commit_url": null,
+        "commit_at": null,
+        "points_awarded": null,
+        "outstanding": [
+          "Given approved draft minutes, when the system drafts emails, then each participant should receive an individualized email with their action items.",
+          "Given a participant with no action items, when the system drafts emails, then it should state 'No action items assigned to you from this meeting.'",
+          "Trust: The system logs email drafting attempts and results."
+        ]
+      }
+    },
+    {
+      "id": "STORY-014",
+      "release": "r3",
+      "acceptance_total": 3,
+      "criteria": [
+        {
+          "text": "Given drafted emails, when the system presents them for review, then it should wait for explicit approval before sending.",
+          "passed": false
+        },
+        {
+          "text": "Given requested adjustments, when the system receives them, then it should revise and re-present the emails for review.",
+          "passed": false
+        },
+        {
+          "text": "Trust: The system logs review gate interactions and approvals.",
+          "passed": false
+        }
+      ],
+      "files_touched": [],
+      "tests_added": [],
+      "notes": null,
+      "updated_at": null,
+      "verification": {
+        "state": "in_progress",
+        "criteria_passed": 0,
+        "criteria_total": 3,
+        "verified_at": null,
+        "commit_sha": null,
+        "commit_url": null,
+        "commit_at": null,
+        "points_awarded": null,
+        "outstanding": [
+          "Given drafted emails, when the system presents them for review, then it should wait for explicit approval before sending.",
+          "Given requested adjustments, when the system receives them, then it should revise and re-present the emails for review.",
+          "Trust: The system logs review gate interactions and approvals."
+        ]
+      }
+    },
+    {
+      "id": "STORY-015",
+      "release": "r4",
+      "acceptance_total": 3,
+      "criteria": [
+        {
+          "text": "Given email send confirmation, when the system logs action items, then each item should have a status of 'Not Started'.",
+          "passed": false
+        },
+        {
+          "text": "Given a logging failure, when the system attempts to log action items, then it should retry and notify the user.",
+          "passed": false
+        },
+        {
+          "text": "Trust: The system logs action item logging attempts and results.",
+          "passed": false
+        }
+      ],
+      "files_touched": [],
+      "tests_added": [],
+      "notes": null,
+      "updated_at": null,
+      "verification": {
+        "state": "in_progress",
+        "criteria_passed": 0,
+        "criteria_total": 3,
+        "verified_at": null,
+        "commit_sha": null,
+        "commit_url": null,
+        "commit_at": null,
+        "points_awarded": null,
+        "outstanding": [
+          "Given email send confirmation, when the system logs action items, then each item should have a status of 'Not Started'.",
+          "Given a logging failure, when the system attempts to log action items, then it should retry and notify the user.",
+          "Trust: The system logs action item logging attempts and results."
+        ]
+      }
+    },
+    {
+      "id": "STORY-016",
+      "release": "r4",
+      "acceptance_total": 3,
+      "criteria": [
+        {
+          "text": "Given recurring meetings, when the system compares open items, then it should flag items open for more than 2 weeks.",
+          "passed": false
+        },
+        {
+          "text": "Given no stale items, when the system compares open items, then it should confirm all items are current.",
+          "passed": false
+        },
+        {
+          "text": "Trust: The system logs stale item flagging attempts and results.",
+          "passed": false
+        }
+      ],
+      "files_touched": [],
+      "tests_added": [],
+      "notes": null,
+      "updated_at": null,
+      "verification": {
+        "state": "in_progress",
+        "criteria_passed": 0,
+        "criteria_total": 3,
+        "verified_at": null,
+        "commit_sha": null,
+        "commit_url": null,
+        "commit_at": null,
+        "points_awarded": null,
+        "outstanding": [
+          "Given recurring meetings, when the system compares open items, then it should flag items open for more than 2 weeks.",
+          "Given no stale items, when the system compares open items, then it should confirm all items are current.",
+          "Trust: The system logs stale item flagging attempts and results."
+        ]
+      }
+    },
+    {
+      "id": "STORY-017",
+      "release": "r4",
+      "acceptance_total": 3,
+      "criteria": [
+        {
+          "text": "Given meeting data, when the system outputs it, then it should be in JSON format suitable for integration.",
+          "passed": false
+        },
+        {
+          "text": "Given a data output failure, when the system attempts to output data, then it should retry and notify the user.",
+          "passed": false
+        },
+        {
+          "text": "Trust: The system logs data output attempts and results.",
+          "passed": false
+        }
+      ],
+      "files_touched": [],
+      "tests_added": [],
+      "notes": null,
+      "updated_at": null,
+      "verification": {
+        "state": "in_progress",
+        "criteria_passed": 0,
+        "criteria_total": 3,
+        "verified_at": null,
+        "commit_sha": null,
+        "commit_url": null,
+        "commit_at": null,
+        "points_awarded": null,
+        "outstanding": [
+          "Given meeting data, when the system outputs it, then it should be in JSON format suitable for integration.",
+          "Given a data output failure, when the system attempts to output data, then it should retry and notify the user.",
+          "Trust: The system logs data output attempts and results."
+        ]
+      }
+    },
+    {
+      "id": "STORY-018",
+      "release": "r0",
+      "acceptance_total": 3,
+      "criteria": [
+        {
+          "text": "Given an audio file is ingested, When the ingestion is repeated, Then the system should not duplicate the data",
+          "passed": false
+        },
+        {
+          "text": "Given an audio file is ingested, When the ingestion fails, Then the system should log the failure with a timestamp",
+          "passed": false
+        },
+        {
+          "text": "Trust: Given an audio file is ingested, Then the system should record the ingestion event in the audit log with a unique identifier",
+          "passed": false
+        }
+      ],
+      "files_touched": [],
+      "tests_added": [],
+      "notes": null,
+      "updated_at": null,
+      "verification": {
+        "state": "in_progress",
+        "criteria_passed": 0,
+        "criteria_total": 3,
+        "verified_at": null,
+        "commit_sha": null,
+        "commit_url": null,
+        "commit_at": null,
+        "points_awarded": null,
+        "outstanding": [
+          "Given an audio file is ingested, When the ingestion is repeated, Then the system should not duplicate the data",
+          "Given an audio file is ingested, When the ingestion fails, Then the system should log the failure with a timestamp",
+          "Trust: Given an audio file is ingested, Then the system should record the ingestion event in the audit log with a unique identifier"
+        ]
+      }
+    },
+    {
+      "id": "STORY-019",
+      "release": "r2",
+      "acceptance_total": 3,
+      "criteria": [
+        {
+          "text": "Given a meeting is concluded, When there are open items, Then the system should propose a next meeting date/time",
+          "passed": false
+        },
+        {
+          "text": "Given a meeting is concluded, When there are no open items, Then the system should not propose a next meeting date/time",
+          "passed": false
+        },
+        {
+          "text": "Trust: Given a meeting is concluded, Then the system should log the proposed meeting date/time and carried over items in the audit log",
+          "passed": false
+        }
+      ],
+      "files_touched": [],
+      "tests_added": [],
+      "notes": null,
+      "updated_at": null,
+      "verification": {
+        "state": "in_progress",
+        "criteria_passed": 0,
+        "criteria_total": 3,
+        "verified_at": null,
+        "commit_sha": null,
+        "commit_url": null,
+        "commit_at": null,
+        "points_awarded": null,
+        "outstanding": [
+          "Given a meeting is concluded, When there are open items, Then the system should propose a next meeting date/time",
+          "Given a meeting is concluded, When there are no open items, Then the system should not propose a next meeting date/time",
+          "Trust: Given a meeting is concluded, Then the system should log the proposed meeting date/time and carried over items in the audit log"
+        ]
+      }
+    }
   ]
 }
