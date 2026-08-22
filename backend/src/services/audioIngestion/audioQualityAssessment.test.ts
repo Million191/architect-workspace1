@@ -39,6 +39,42 @@ function repeat(values: number[], times: number): number[] {
   return Array.from({ length: times }, () => values).flat();
 }
 
+/** Builds a 16-bit PCM stereo WAV by interleaving equal-length left/right sample arrays. */
+function buildStereoWav(leftSamples: number[], rightSamples: number[]): Buffer {
+  const sampleRate = 16000;
+  const numChannels = 2;
+  const bitsPerSample = 16;
+  const byteRate = (sampleRate * numChannels * bitsPerSample) / 8;
+  const blockAlign = (numChannels * bitsPerSample) / 8;
+
+  const dataBuffer = Buffer.alloc(leftSamples.length * 2 * (bitsPerSample / 8));
+  for (let i = 0; i < leftSamples.length; i++) {
+    dataBuffer.writeInt16LE(leftSamples[i], i * 4);
+    dataBuffer.writeInt16LE(rightSamples[i], i * 4 + 2);
+  }
+
+  const fmtChunk = Buffer.alloc(24);
+  fmtChunk.write('fmt ', 0, 'ascii');
+  fmtChunk.writeUInt32LE(16, 4);
+  fmtChunk.writeUInt16LE(1, 8); // PCM
+  fmtChunk.writeUInt16LE(numChannels, 10);
+  fmtChunk.writeUInt32LE(sampleRate, 12);
+  fmtChunk.writeUInt32LE(byteRate, 16);
+  fmtChunk.writeUInt16LE(blockAlign, 20);
+  fmtChunk.writeUInt16LE(bitsPerSample, 22);
+
+  const dataHeader = Buffer.alloc(8);
+  dataHeader.write('data', 0, 'ascii');
+  dataHeader.writeUInt32LE(dataBuffer.length, 4);
+
+  const riffHeader = Buffer.alloc(12);
+  riffHeader.write('RIFF', 0, 'ascii');
+  riffHeader.writeUInt32LE(4 + fmtChunk.length + dataHeader.length + dataBuffer.length, 4);
+  riffHeader.write('WAVE', 8, 'ascii');
+
+  return Buffer.concat([riffHeader, fmtChunk, dataHeader, dataBuffer]);
+}
+
 describe('assessAudioQuality', () => {
   it('does not flag a clean, moderate-amplitude signal', () => {
     const samples = repeat([8000, -8000], 500); // steady square wave, well above silence, no clipping
@@ -79,5 +115,23 @@ describe('assessAudioQuality', () => {
     const result = assessAudioQuality('wav', buildWav(samples, 8));
     expect(result.lowConfidence).toBe(true);
     expect(result.reason).toMatch(/16-bit/i);
+  });
+
+  it('flags a stereo segment with sustained simultaneous channel energy as crosstalk', () => {
+    // Both channels loud for the whole segment — consistent with two overlapping speakers.
+    const left = repeat([8000, -8000], 500);
+    const right = repeat([7000, -7000], 500);
+    const result = assessAudioQuality('wav', buildStereoWav(left, right));
+    expect(result.lowConfidence).toBe(true);
+    expect(result.reason).toMatch(/crosstalk/i);
+  });
+
+  it('does not flag a stereo segment where channels take turns (no overlap) as crosstalk', () => {
+    // First half: only the left channel is active. Second half: only the right channel is
+    // active. Each channel is loud on its own, but never at the same time as the other.
+    const left = [...repeat([8000, -8000], 250), ...repeat([0], 500)];
+    const right = [...repeat([0], 500), ...repeat([8000, -8000], 250)];
+    const result = assessAudioQuality('wav', buildStereoWav(left, right));
+    expect(result.lowConfidence).toBe(false);
   });
 });

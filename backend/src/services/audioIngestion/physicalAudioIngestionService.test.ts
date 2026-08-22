@@ -67,6 +67,9 @@ describe('ingestPhysicalRecording', () => {
     const [event, context] = logger.calls[0];
     expect(event).toBe('audio_ingested');
     expect(context).toMatchObject({ source: 'room_mic', originalFilename: 'meeting.wav', lowConfidence: false });
+
+    // A clean recording is not flagged, so no review-flag event should be logged for it.
+    expect(logger.calls.map(([e]) => e)).not.toContain('audio_segment_flagged_for_review');
   });
 
   it('happy path: a phone recording works the same way', () => {
@@ -81,6 +84,17 @@ describe('ingestPhysicalRecording', () => {
     expect(result.status).toBe('available_for_transcription'); // still ingested — flagged, not rejected
     expect(result.lowConfidence).toBe(true);
     expect(result.lowConfidenceReason).toMatch(/quiet/i);
+  });
+
+  it('trust: a flagged segment is logged for review with its reason', () => {
+    const logger = fakeLogger();
+    ingestPhysicalRecording('room_mic', 'noisy.wav', noisyWav(), { logger, idempotencyStore: new Map() });
+
+    const reviewEvent = logger.calls.find(([event]) => event === 'audio_segment_flagged_for_review');
+    expect(reviewEvent).toBeDefined();
+    const [, context] = reviewEvent!;
+    expect(context).toMatchObject({ source: 'room_mic', originalFilename: 'noisy.wav' });
+    expect(context.reason).toMatch(/quiet/i);
   });
 
   it('failure path: rejects an unsupported file extension with a clear error', () => {

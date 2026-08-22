@@ -107,5 +107,14 @@ export function ingestPhysicalRecording(
     qualityReason: quality.reason,
   });
 
+  if (quality.lowConfidence) {
+    logger.info('audio_segment_flagged_for_review', {
+      source,
+      originalFilename,
+      id,
+      reason: quality.reason,
+    });
+  }
+
   return ingested;
 }

@@ -561,3 +561,61 @@
     assumption (8 pts/criterion, matching STORY-000's 40/5 ratio — no
     explicit per-story point value exists in `plan.json`); flagged here
     since the portal, not Claude Code, may own that computation.
+
+## 2026-08-22
+
+- [x] STORY-003 — Flag low-confidence segments in physical audio (crosstalk)
+  - Date: 2026-08-22
+  - Session: CC-20260822-r5n8
+  - What changed: Implemented REQ-003 by extending STORY-002's existing
+    quality-assessment code rather than rebuilding it, per the brief's
+    "reuse, do not rebuild" instruction. Before building, stopped and
+    asked the user how to handle a real gap between the brief's literal
+    wording and what's measurable: "crosstalk" (overlapping speakers) is
+    a speech/diarization phenomenon, and no real decoder or diarization
+    library exists in this project — the existing STORY-002 heuristic
+    only reads raw PCM signal properties (RMS loudness, clipping). User
+    chose the stereo channel-overlap heuristic option: for stereo WAV,
+    `audioQualityAssessment.ts` now parses `numChannels` from the `fmt `
+    chunk (previously parsed but discarded) and a new
+    `assessStereoCrosstalk()` splits the segment into 10 equal time
+    frames, flagging low-confidence when both channels carry
+    above-silence energy in the same frame more than 60% of the time —
+    a genuine signal-overlap check, not real diarization, and documented
+    as such in the function's comment. Mono files (most real room-mic/
+    phone recordings) fall straight through to the existing silence/
+    clipping check unchanged, since there's no second channel to compare
+    against — this honest limitation is called out in code rather than
+    hidden. Also added a distinct `audio_segment_flagged_for_review` log
+    event in `physicalAudioIngestionService.ts`, fired only when a
+    segment is actually flagged (not on the idempotent-dedup path, so
+    re-uploads don't duplicate the review-log side effect), to satisfy
+    the Trust criterion with a clearly-named, filterable event rather
+    than relying on a field buried inside the general `audio_ingested`
+    line.
+  - Verification: `tsc --noEmit` clean. `npx jest`: 103/103 passing
+    across 12 suites (up from 100 after STORY-002/STORY-001 fixes — 3 new
+    tests: a stereo segment loud on both channels throughout flags with a
+    `/crosstalk/i` reason; a stereo segment where channels take turns
+    (never simultaneously active) does not flag; a flagged segment emits
+    `audio_segment_flagged_for_review` with source/filename/reason, while
+    a clean segment emits no such event). All 6 pre-existing
+    `audioQualityAssessment` tests (mono silence/clipping/compressed/
+    malformed/non-16-bit cases) pass unchanged, confirming the new
+    stereo path didn't regress mono behavior.
+  - Notes: Confidence 65% — lower than STORY-002's 70%, and for a
+    specific reason worth being upfront about: the stereo crosstalk
+    heuristic only fires on stereo WAV files, but most real physical
+    recordings (a single room mic, a phone call) are mono, where
+    crosstalk genuinely cannot be distinguished from one loud continuous
+    speaker using signal amplitude alone — the acceptance criteria pass
+    against the synthetic stereo test fixtures used here, but the
+    heuristic would not catch crosstalk in the more common mono case.
+    The 10-frame/60%-overlap thresholds are also untuned constants, not
+    derived from real recordings. What would raise confidence: real
+    audio test fixtures (not synthetic square waves) to validate the
+    thresholds, and either a mono-compatible crosstalk signal (if one
+    exists without full diarization) or an explicit product decision that
+    mono crosstalk detection is out of scope until a real diarization
+    dependency is approved. Not yet committed — commit is the next step,
+    with a message naming STORY-003 per the brief.
