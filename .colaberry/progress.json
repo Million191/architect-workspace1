@@ -3,13 +3,13 @@
   "project": "Meeting Assistant",
   "totals": {
     "stories_total": 20,
-    "stories_verified": 3,
+    "stories_verified": 4,
     "stories_submitted": 0,
-    "stories_in_progress": 17,
+    "stories_in_progress": 16,
     "stories_not_started": 0,
     "criteria_total": 62,
-    "criteria_passed": 11,
-    "points_awarded": 88
+    "criteria_passed": 14,
+    "points_awarded": 112
   },
   "stories": [
     {
@@ -211,14 +211,14 @@
       "notes": "Physical ingestion gained a new optional 'location' input (nothing captured a room/site name before this story). No location supplied falls back to an honest 'Location unknown' placeholder rather than fabricating one. points_awarded assumes 8/criterion, same convention as STORY-001/002/003 — no explicit per-story value in plan.json.",
       "updated_at": "2026-08-22T00:00:00Z",
       "verification": {
-        "state": "in_progress",
+        "state": "verified",
         "criteria_passed": 3,
         "criteria_total": 3,
-        "verified_at": null,
-        "commit_sha": null,
-        "commit_url": null,
-        "commit_at": null,
-        "points_awarded": null,
+        "verified_at": "2026-08-22T18:45:37Z",
+        "commit_sha": "6112b304eb4e6463fc41209ed0ce2225f131ef8c",
+        "commit_url": "https://github.com/Million191/architect-workspace1/commit/6112b304eb4e6463fc41209ed0ce2225f131ef8c",
+        "commit_at": "2026-08-22T18:45:37Z",
+        "points_awarded": 24,
         "outstanding": []
       }
     },
