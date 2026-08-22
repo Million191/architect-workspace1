@@ -744,3 +744,24 @@
     rather than stdout, per CLAUDE.md's Idempotency & Replayability
     section. Not yet committed — commit is the next step, with a
     message naming STORY-018 per the brief.
+
+- [x] Track pre-existing prompt-evaluation harness (untracked files, not authored this session)
+  - Date: 2026-08-22
+  - Session: CC-20260822-k9x2
+  - What changed: Committed `requirements.txt`, `prompts/tag-audio-source/`
+    (`prompt.md`, `v1.0.0.md`, `eval.jsonl`), and `scripts/score_prompt.py`
+    — a prompt + eval-set + scoring script for classifying an incoming
+    recording's `source_type`/`confidence`. These files already existed,
+    untracked, in the working tree at session start (file timestamps
+    predate this session); no changes were made to their content. Adding
+    a `PROGRESS.md` entry here only because CLAUDE.md's hard gate
+    requires any commit touching `/scripts` to also touch `PROGRESS.md`
+    — this entry does not claim authorship of the prompt/eval work
+    itself.
+  - Verification: user confirmed — explicit instruction to commit these
+    files after being shown their contents (no secrets, `.env` already
+    gitignored).
+  - Notes: Not tied to a story; no functional relationship to STORY-018
+    beyond both touching audio-source classification conceptually. If
+    this harness belongs to a specific story or directive, worth linking
+    it there in a follow-up.
