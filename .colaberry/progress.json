@@ -3,13 +3,13 @@
   "project": "Meeting Assistant",
   "totals": {
     "stories_total": 20,
-    "stories_verified": 2,
+    "stories_verified": 3,
     "stories_submitted": 0,
-    "stories_in_progress": 18,
+    "stories_in_progress": 17,
     "stories_not_started": 0,
     "criteria_total": 62,
-    "criteria_passed": 8,
-    "points_awarded": 64
+    "criteria_passed": 11,
+    "points_awarded": 88
   },
   "stories": [
     {
@@ -142,35 +142,37 @@
       "criteria": [
         {
           "text": "Given a physical audio segment with crosstalk, when the system processes it, then it should flag it for low confidence.",
-          "passed": false
+          "passed": true
         },
         {
           "text": "Given a clear audio segment, when the system processes it, then it should not flag it for low confidence.",
-          "passed": false
+          "passed": true
         },
         {
           "text": "Trust: The system logs flagged segments for review.",
-          "passed": false
+          "passed": true
         }
       ],
-      "files_touched": [],
-      "tests_added": [],
-      "notes": null,
-      "updated_at": null,
+      "files_touched": [
+        "backend/src/services/audioIngestion/audioQualityAssessment.ts",
+        "backend/src/services/audioIngestion/physicalAudioIngestionService.ts"
+      ],
+      "tests_added": [
+        "backend/src/services/audioIngestion/audioQualityAssessment.test.ts",
+        "backend/src/services/audioIngestion/physicalAudioIngestionService.test.ts"
+      ],
+      "notes": "Crosstalk detection is a stereo channel-overlap heuristic (real signal math), not diarization; mono recordings fall back to STORY-002's existing silence/clipping check. points_awarded assumes 8/criterion, same convention as STORY-001/STORY-002 — no explicit per-story value in plan.json.",
+      "updated_at": "2026-08-22T00:00:00Z",
       "verification": {
-        "state": "in_progress",
-        "criteria_passed": 0,
+        "state": "verified",
+        "criteria_passed": 3,
         "criteria_total": 3,
-        "verified_at": null,
-        "commit_sha": null,
-        "commit_url": null,
-        "commit_at": null,
-        "points_awarded": null,
-        "outstanding": [
-          "Given a physical audio segment with crosstalk, when the system processes it, then it should flag it for low confidence.",
-          "Given a clear audio segment, when the system processes it, then it should not flag it for low confidence.",
-          "Trust: The system logs flagged segments for review."
-        ]
+        "verified_at": "2026-08-22T00:00:00Z",
+        "commit_sha": "91cde90461b1473bfb01ddf879b7a689c54e246e",
+        "commit_url": "https://github.com/Million191/architect-workspace1/commit/91cde90461b1473bfb01ddf879b7a689c54e246e",
+        "commit_at": "2026-08-22T18:15:29Z",
+        "points_awarded": 24,
+        "outstanding": []
       }
     },
     {
