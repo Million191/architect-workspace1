@@ -153,6 +153,31 @@ describe('ingestPhysicalRecording', () => {
     expect(logger.calls.map(([event]) => event)).toEqual(['audio_ingested', 'output_tagged', 'audio_ingestion_deduplicated']);
   });
 
+  it('audit trail: a dedup hit gets its own auditEventId even though it shares the resourceId with the original ingest', () => {
+    const idempotencyStore = new Map<string, IngestedAudio>();
+    const bytes = cleanWav();
+    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+
+    try {
+      ingestPhysicalRecording('room_mic', 'meeting.wav', bytes, { idempotencyStore });
+      ingestPhysicalRecording('room_mic', 'meeting-retry.wav', bytes, { idempotencyStore });
+
+      const auditEntries = logSpy.mock.calls
+        .map(([line]) => JSON.parse(line as string))
+        .filter((entry) => typeof entry.auditEventId === 'string');
+
+      const ingestedEntry = auditEntries.find((entry) => entry.event === 'audio_ingested');
+      const dedupEntry = auditEntries.find((entry) => entry.event === 'audio_ingestion_deduplicated');
+
+      expect(ingestedEntry).toBeDefined();
+      expect(dedupEntry).toBeDefined();
+      expect(dedupEntry.resourceId).toBe(ingestedEntry.resourceId);
+      expect(dedupEntry.auditEventId).not.toBe(ingestedEntry.auditEventId);
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
   it('failure path: an internal tagging failure propagates cleanly and leaves no partial state (tagging system failure)', () => {
     const logger = fakeLogger();
     const idempotencyStore = new Map<string, IngestedAudio>();

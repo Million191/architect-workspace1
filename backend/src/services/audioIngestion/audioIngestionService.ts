@@ -1,5 +1,6 @@
 import { CorruptedAudioError, UnsupportedFormatError } from './errors';
 import { buildOutputTag } from './outputTagging';
+import { recordAuditEvent } from './auditLog';
 import {
   IngestedAudio,
   PlatformClient,
@@ -15,16 +16,12 @@ export interface AudioIngestionLogger {
 
 const defaultLogger: AudioIngestionLogger = {
   info(event, context) {
-    console.log(
-      JSON.stringify({
-        timestamp: new Date().toISOString(),
-        level: 'info',
-        service: 'audio-ingestion',
-        event,
-        outcome: 'success',
-        context,
-      })
-    );
+    recordAuditEvent({
+      event,
+      outcome: 'success',
+      resourceId: typeof context.id === 'string' ? context.id : 'unresolved',
+      context,
+    });
   },
 };
 

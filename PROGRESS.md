@@ -684,3 +684,63 @@
     once real usage shows how often it's left blank. Not yet committed —
     commit is the next step, with a message naming STORY-004 per the
     brief.
+
+- [x] STORY-018 — Ensure idempotency and audit trail for audio ingestion
+  - Date: 2026-08-22
+  - Session: CC-20260822-k9x2
+  - What changed: Added `backend/src/services/audioIngestion/auditLog.ts`
+    exposing `recordAuditEvent()`, a single write path for the
+    audio-ingestion audit trail. Every call generates a fresh
+    `crypto.randomUUID()` as `auditEventId`, independent of the
+    ingestion's `resourceId` (which repeats across dedup hits and
+    repeated failures on the same file), so each audit entry is
+    individually identifiable — satisfying the Trust acceptance
+    criterion. Entries carry `timestamp`, `event`, `outcome`
+    (success/failure), `resourceId`, optional top-level `error_class`
+    (matching CLAUDE.md's Observability Framework field name), and
+    `context`; failures route to `console.error`, successes to
+    `console.log`. Wired it into all four existing call sites rather
+    than building new ingestion logic (idempotency itself already
+    existed from STORY-001–004 and needed no changes — dedup on
+    `platform:fileId` for virtual, SHA-256 content hash for physical):
+    `audioIngestionService.ts` and `physicalAudioIngestionService.ts`'s
+    `defaultLogger.info()` now call `recordAuditEvent()` instead of raw
+    `console.log` (the injectable `AudioIngestionLogger` interface used
+    by ~9 existing tests was left untouched, so no existing test needed
+    to change); `audioIngestion.ts` and `physicalAudioIngestion.ts`
+    routes' failure-path `console.error` blocks now call
+    `recordAuditEvent()` with `outcome: 'failure'`, the error's
+    `errorClass`, and a best-effort `resourceId`
+    (`platform:meetingRef` or `source:filename`, since a failed
+    ingestion never gets a real resource id). Added `auditLog.test.ts`
+    (4 tests: unique `auditEventId` per call even with identical
+    `resourceId`; structured entry shape; failure routes to
+    `console.error`/success to `console.log`; `error_class` present
+    only on failures). Added one audit-trail integration test each to
+    `audioIngestionService.test.ts` and
+    `physicalAudioIngestionService.test.ts`: ingest the same file twice
+    through the real default logger (`console.log` spy, not a mock),
+    assert the `audio_ingested` and `audio_ingestion_deduplicated`
+    entries share `resourceId` but have distinct `auditEventId`s —
+    proving the unique-identifier guarantee end-to-end through
+    production wiring, not just the module in isolation.
+  - Verification: `tsc --noEmit` clean. `npx jest`: 127/127 passing
+    across 14 suites (up from 120/13 before this story — 7 new tests: 4
+    for `auditLog.ts` in isolation, 2 audit-trail integration tests
+    (virtual + physical dedup produces distinct `auditEventId` with
+    same `resourceId`), 1 covering `error_class`).
+  - Notes: Confidence 85%. All three acceptance criteria pass: (1)
+    duplicate ingestion doesn't duplicate data — pre-existing
+    idempotency, unchanged; (2) failure logged with timestamp —
+    pre-existing, now routed through the same audit module; (3) Trust:
+    ingestion event recorded in audit log with unique identifier — new,
+    and proven via a real (non-mocked) console spy rather than just
+    asserting the module's own unit tests. What would raise confidence:
+    the audit log is still process-local (console output), matching the
+    existing `TODO(pre-persistence)` markers already in
+    `audioIngestionService.ts`/`physicalAudioIngestionService.ts` for
+    the idempotency stores — once a real data layer exists, the audit
+    trail should move to durable storage (a DB table or log aggregator)
+    rather than stdout, per CLAUDE.md's Idempotency & Replayability
+    section. Not yet committed — commit is the next step, with a
+    message naming STORY-018 per the brief.

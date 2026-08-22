@@ -98,6 +98,33 @@ describe('ingestVirtualMeetingRecording', () => {
     expect(logger.calls.map(([event]) => event)).toEqual(['audio_ingested', 'output_tagged', 'audio_ingestion_deduplicated']);
   });
 
+  it('audit trail: a dedup hit gets its own auditEventId even though it shares the resourceId with the original ingest', async () => {
+    const client = fakeClient({
+      files: [{ id: 'file-audit-1', fileExtension: 'm4a', fileSizeBytes: 4096, downloadUrl: 'https://zoom.example/file-audit-1' }],
+    });
+    const idempotencyStore = new Map<string, IngestedAudio>();
+    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+
+    try {
+      await ingestVirtualMeetingRecording('zoom', 'meeting-audit', { client, idempotencyStore });
+      await ingestVirtualMeetingRecording('zoom', 'meeting-audit', { client, idempotencyStore });
+
+      const auditEntries = logSpy.mock.calls
+        .map(([line]) => JSON.parse(line as string))
+        .filter((entry) => typeof entry.auditEventId === 'string');
+
+      const ingestedEntry = auditEntries.find((entry) => entry.event === 'audio_ingested');
+      const dedupEntry = auditEntries.find((entry) => entry.event === 'audio_ingestion_deduplicated');
+
+      expect(ingestedEntry).toBeDefined();
+      expect(dedupEntry).toBeDefined();
+      expect(dedupEntry.resourceId).toBe(ingestedEntry.resourceId);
+      expect(dedupEntry.auditEventId).not.toBe(ingestedEntry.auditEventId);
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
   it('concurrency: two simultaneous requests for the same meeting share one upstream call', async () => {
     let callCount = 0;
     const client: PlatformClient = {

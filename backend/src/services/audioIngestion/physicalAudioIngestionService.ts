@@ -3,21 +3,18 @@ import { CorruptedAudioError, UnsupportedFormatError } from './errors';
 import { extractClaimedFormat, sniffAudioFormat } from './audioFormatSniffer';
 import { assessAudioQuality } from './audioQualityAssessment';
 import { buildOutputTag } from './outputTagging';
+import { recordAuditEvent } from './auditLog';
 import { IngestedAudio, PhysicalAudioSource } from './types';
 import { AudioIngestionLogger } from './audioIngestionService';
 
 const defaultLogger: AudioIngestionLogger = {
   info(event, context) {
-    console.log(
-      JSON.stringify({
-        timestamp: new Date().toISOString(),
-        level: 'info',
-        service: 'audio-ingestion',
-        event,
-        outcome: 'success',
-        context,
-      })
-    );
+    recordAuditEvent({
+      event,
+      outcome: 'success',
+      resourceId: typeof context.id === 'string' ? context.id : 'unresolved',
+      context,
+    });
   },
 };
 

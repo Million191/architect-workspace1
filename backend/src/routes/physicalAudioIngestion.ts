@@ -3,6 +3,7 @@ import multer from 'multer';
 import { z } from 'zod';
 import { ingestPhysicalRecording } from '../services/audioIngestion/physicalAudioIngestionService';
 import { IngestedAudio } from '../services/audioIngestion/types';
+import { recordAuditEvent } from '../services/audioIngestion/auditLog';
 import { statusForIngestionError, errorClassOf } from './errorResponse';
 
 // Generous for a single meeting recording; arbitrary otherwise — revisit once real usage exists.
@@ -15,21 +16,17 @@ const physicalSourceSchema = z.enum(['room_mic', 'phone']);
 const locationSchema = z.string().optional();
 
 function logIngestionFailure(source: unknown, originalFilename: string | undefined, error: unknown): void {
-  console.error(
-    JSON.stringify({
-      timestamp: new Date().toISOString(),
-      level: 'error',
-      service: 'audio-ingestion',
-      event: 'audio_ingestion_failed',
-      outcome: 'failure',
-      error_class: errorClassOf(error),
-      context: {
-        source,
-        originalFilename,
-        errorMessage: error instanceof Error ? error.message : String(error),
-      },
-    })
-  );
+  recordAuditEvent({
+    event: 'audio_ingestion_failed',
+    outcome: 'failure',
+    resourceId: `${String(source)}:${originalFilename ?? 'unknown'}`,
+    errorClass: errorClassOf(error),
+    context: {
+      source,
+      originalFilename,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    },
+  });
 }
 
 export interface PhysicalAudioIngestionRouterDeps {

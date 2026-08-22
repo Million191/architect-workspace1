@@ -6,6 +6,7 @@ import { createTeamsClient } from '../services/audioIngestion/teamsClient';
 import { createMeetClient } from '../services/audioIngestion/meetClient';
 import { PlatformClient, VirtualMeetingPlatform } from '../services/audioIngestion/types';
 import { ConfigurationError } from '../services/audioIngestion/errors';
+import { recordAuditEvent } from '../services/audioIngestion/auditLog';
 import { statusForIngestionError, errorClassOf } from './errorResponse';
 
 function requireEnv(names: string[]): Record<string, string> | ConfigurationError {
@@ -76,21 +77,17 @@ async function handleIngestRequest(
     const errorClass = errorClassOf(error);
     const { status, message } = statusForIngestionError(error);
 
-    console.error(
-      JSON.stringify({
-        timestamp: new Date().toISOString(),
-        level: 'error',
-        service: 'audio-ingestion',
-        event: 'audio_ingestion_failed',
-        outcome: 'failure',
-        error_class: errorClass,
-        context: {
-          platform,
-          meetingRef,
-          errorMessage: error instanceof Error ? error.message : String(error),
-        },
-      })
-    );
+    recordAuditEvent({
+      event: 'audio_ingestion_failed',
+      outcome: 'failure',
+      resourceId: `${platform}:${meetingRef}`,
+      errorClass,
+      context: {
+        platform,
+        meetingRef,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      },
+    });
 
     res.status(status).json({ error: errorClass, message });
   }
