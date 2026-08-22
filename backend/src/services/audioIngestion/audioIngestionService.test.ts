@@ -1,6 +1,6 @@
 import { ingestVirtualMeetingRecording, AudioIngestionLogger } from './audioIngestionService';
-import { CorruptedAudioError, UnsupportedFormatError } from './errors';
-import { IngestedAudio, PlatformClient, PlatformRecording } from './types';
+import { CorruptedAudioError, TaggingError, UnsupportedFormatError } from './errors';
+import { IngestedAudio, PlatformClient, PlatformRecording, VirtualMeetingPlatform } from './types';
 
 function fakeClient(recording: PlatformRecording): PlatformClient {
   return { fetchRecording: jest.fn().mockResolvedValue(recording) };
@@ -30,6 +30,15 @@ describe('ingestVirtualMeetingRecording', () => {
     const [event, context] = logger.calls[0];
     expect(event).toBe('audio_ingested');
     expect(context).toMatchObject({ platform: 'zoom', meetingRef: 'meeting-1', sourceRecordingId: 'file-1' });
+
+    const [tagEvent, tagContext] = logger.calls[1];
+    expect(tagEvent).toBe('output_tagged');
+    expect(tagContext).toMatchObject({
+      platform: 'zoom',
+      meetingType: 'Virtual',
+      header: '[Virtual — Zoom]',
+      locationUnknown: false,
+    });
   });
 
   it('happy path: an mp4 recording (Teams\' only format) is accepted, not rejected as unsupported', async () => {
@@ -86,7 +95,7 @@ describe('ingestVirtualMeetingRecording', () => {
 
     expect(second).toEqual(first);
     expect(idempotencyStore.size).toBe(1);
-    expect(logger.calls.map(([event]) => event)).toEqual(['audio_ingested', 'audio_ingestion_deduplicated']);
+    expect(logger.calls.map(([event]) => event)).toEqual(['audio_ingested', 'output_tagged', 'audio_ingestion_deduplicated']);
   });
 
   it('concurrency: two simultaneous requests for the same meeting share one upstream call', async () => {
@@ -124,5 +133,21 @@ describe('ingestVirtualMeetingRecording', () => {
 
     expect(idempotencyStore.size).toBe(2);
     expect(zoomResult.id).not.toBe(teamsResult.id);
+  });
+
+  it('failure path: an internal tagging failure propagates cleanly and leaves no partial state (tagging system failure)', async () => {
+    const client = fakeClient({
+      files: [{ id: 'file-bad-tag', fileExtension: 'm4a', fileSizeBytes: 4096, downloadUrl: 'https://example.com/f' }],
+    });
+    const logger = fakeLogger();
+    const idempotencyStore = new Map<string, IngestedAudio>();
+    const unrecognizedPlatform = 'carrier_pigeon' as unknown as VirtualMeetingPlatform;
+
+    await expect(
+      ingestVirtualMeetingRecording(unrecognizedPlatform, 'meeting-bad-tag', { client, logger, idempotencyStore })
+    ).rejects.toThrow(TaggingError);
+
+    expect(idempotencyStore.size).toBe(0);
+    expect(logger.calls.map(([event]) => event)).not.toContain('audio_ingested');
   });
 });

@@ -9,6 +9,10 @@ import { statusForIngestionError, errorClassOf } from './errorResponse';
 const DEFAULT_MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
 
 const physicalSourceSchema = z.enum(['room_mic', 'phone']);
+// Optional: the room/site name for the [In-Person — Location] output tag (REQ-004). Left
+// unset or blank, tagging falls back to an honest "Location unknown" placeholder rather than
+// guessing — so this schema only rejects a non-string, never an empty one.
+const locationSchema = z.string().optional();
 
 function logIngestionFailure(source: unknown, originalFilename: string | undefined, error: unknown): void {
   console.error(
@@ -57,6 +61,12 @@ export function createPhysicalAudioIngestionRouter(deps: PhysicalAudioIngestionR
         return;
       }
 
+      const parsedLocation = locationSchema.safeParse(req.body.location);
+      if (!parsedLocation.success) {
+        res.status(400).json({ error: 'ValidationError', message: 'location must be a string if provided.' });
+        return;
+      }
+
       if (!req.file) {
         res.status(400).json({ error: 'ValidationError', message: 'An "audio" file is required.' });
         return;
@@ -65,6 +75,7 @@ export function createPhysicalAudioIngestionRouter(deps: PhysicalAudioIngestionR
       try {
         const ingested = ingestPhysicalRecording(parsedSource.data, req.file.originalname, req.file.buffer, {
           idempotencyStore: deps.idempotencyStore,
+          location: parsedLocation.data,
         });
         res.status(201).json(ingested);
       } catch (error) {

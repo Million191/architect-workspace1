@@ -1,4 +1,5 @@
 import { CorruptedAudioError, UnsupportedFormatError } from './errors';
+import { buildOutputTag } from './outputTagging';
 import {
   IngestedAudio,
   PlatformClient,
@@ -120,6 +121,8 @@ async function performIngest(
     return existing;
   }
 
+  const outputTag = buildOutputTag(platform);
+
   const ingested: IngestedAudio = {
     id,
     source: platform,
@@ -129,6 +132,7 @@ async function performIngest(
     downloadUrl: audioFile.downloadUrl,
     ingestedAt: new Date().toISOString(),
     status: 'available_for_transcription',
+    outputTag,
   };
 
   idempotencyStore.set(id, ingested);
@@ -138,6 +142,14 @@ async function performIngest(
     sourceRecordingId: audioFile.id,
     id,
     format: ingested.format,
+  });
+  logger.info('output_tagged', {
+    platform,
+    meetingRef,
+    id,
+    meetingType: outputTag.meetingType,
+    header: outputTag.header,
+    locationUnknown: outputTag.locationUnknown,
   });
 
   return ingested;

@@ -41,3 +41,8 @@ export class ContractViolationError extends IngestionError {
 export class ConfigurationError extends IngestionError {
   readonly errorClass = 'ConfigurationError';
 }
+
+/** An audio source value doesn't match any known meeting type, so it can't be tagged. */
+export class TaggingError extends IngestionError {
+  readonly errorClass = 'TaggingError';
+}

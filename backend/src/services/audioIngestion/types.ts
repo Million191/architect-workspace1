@@ -2,6 +2,17 @@ export type VirtualMeetingPlatform = 'zoom' | 'teams' | 'meet';
 export type PhysicalAudioSource = 'room_mic' | 'phone';
 export type AudioSource = VirtualMeetingPlatform | PhysicalAudioSource;
 
+export type MeetingType = 'Virtual' | 'In-Person';
+
+/** The `[Meeting Type — Source]` header tag for a processed meeting's output. See REQ-004. */
+export interface OutputTag {
+  meetingType: MeetingType;
+  sourceLabel: string;
+  header: string;
+  /** True when a physical recording had no location supplied, so `sourceLabel` is a fallback, not a real place. */
+  locationUnknown: boolean;
+}
+
 // 'mp4' is here because Microsoft Teams cloud recordings are always delivered as an MP4
 // container (video + AAC audio track) — there's no separate audio-only export like Zoom's
 // M4A recording type. Rejecting mp4 would mean Teams ingestion could never succeed.
@@ -31,6 +42,8 @@ export interface IngestedAudio {
    */
   lowConfidence?: boolean;
   lowConfidenceReason?: string;
+  /** [Meeting Type — Source] header tag, computed at ingest time from `source` (see REQ-004). */
+  outputTag: OutputTag;
 }
 
 /** One media file attached to a platform's recording, in a shape common across platforms. */

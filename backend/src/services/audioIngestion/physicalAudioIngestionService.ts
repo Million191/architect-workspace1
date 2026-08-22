@@ -2,6 +2,7 @@ import { createHash } from 'crypto';
 import { CorruptedAudioError, UnsupportedFormatError } from './errors';
 import { extractClaimedFormat, sniffAudioFormat } from './audioFormatSniffer';
 import { assessAudioQuality } from './audioQualityAssessment';
+import { buildOutputTag } from './outputTagging';
 import { IngestedAudio, PhysicalAudioSource } from './types';
 import { AudioIngestionLogger } from './audioIngestionService';
 
@@ -36,6 +37,8 @@ function sha256Hex(buffer: Buffer): string {
 export interface IngestPhysicalOptions {
   logger?: AudioIngestionLogger;
   idempotencyStore?: Map<string, IngestedAudio>;
+  /** Room/site name for the header tag (REQ-004). Nothing else in the system captures this yet. */
+  location?: string;
 }
 
 /**
@@ -50,7 +53,7 @@ export function ingestPhysicalRecording(
   source: PhysicalAudioSource,
   originalFilename: string,
   fileBuffer: Buffer,
-  { logger = defaultLogger, idempotencyStore = defaultIdempotencyStore }: IngestPhysicalOptions = {}
+  { logger = defaultLogger, idempotencyStore = defaultIdempotencyStore, location }: IngestPhysicalOptions = {}
 ): IngestedAudio {
   const claimedFormat = extractClaimedFormat(originalFilename);
   if (!claimedFormat) {
@@ -83,6 +86,7 @@ export function ingestPhysicalRecording(
   }
 
   const quality = assessAudioQuality(sniffedFormat, fileBuffer);
+  const outputTag = buildOutputTag(source, location);
 
   const ingested: IngestedAudio = {
     id,
@@ -94,6 +98,7 @@ export function ingestPhysicalRecording(
     status: 'available_for_transcription',
     lowConfidence: quality.lowConfidence,
     lowConfidenceReason: quality.lowConfidence ? quality.reason : undefined,
+    outputTag,
   };
 
   idempotencyStore.set(id, ingested);
@@ -105,6 +110,14 @@ export function ingestPhysicalRecording(
     sizeBytes: ingested.sizeBytes,
     lowConfidence: ingested.lowConfidence,
     qualityReason: quality.reason,
+  });
+  logger.info('output_tagged', {
+    source,
+    originalFilename,
+    id,
+    meetingType: outputTag.meetingType,
+    header: outputTag.header,
+    locationUnknown: outputTag.locationUnknown,
   });
 
   if (quality.lowConfidence) {

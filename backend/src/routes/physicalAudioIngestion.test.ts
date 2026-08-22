@@ -82,6 +82,34 @@ describe('POST /api/audio/ingest/physical', () => {
     expect(typeof res.body.lowConfidenceReason).toBe('string');
   });
 
+  it('acceptance: tags the output header [In-Person — <location>] when a location is supplied, per REQ-004', async () => {
+    const app = appWithFreshStore();
+
+    const res = await request(app)
+      .post('/api/audio/ingest/physical')
+      .field('source', 'room_mic')
+      .field('location', 'Conference Room A')
+      .attach('audio', wavBuffer(), 'meeting.wav');
+
+    expect(res.status).toBe(201);
+    expect(res.body.outputTag.meetingType).toBe('In-Person');
+    expect(res.body.outputTag.header).toBe('[In-Person — Conference Room A]');
+    expect(res.body.outputTag.locationUnknown).toBe(false);
+  });
+
+  it('failure path: missing location metadata falls back to an honest placeholder instead of failing ingestion', async () => {
+    const app = appWithFreshStore();
+
+    const res = await request(app)
+      .post('/api/audio/ingest/physical')
+      .field('source', 'room_mic')
+      .attach('audio', wavBuffer(), 'meeting.wav');
+
+    expect(res.status).toBe(201);
+    expect(res.body.outputTag.header).toBe('[In-Person — Location unknown]');
+    expect(res.body.outputTag.locationUnknown).toBe(true);
+  });
+
   it('acceptance: a phone recording is accepted the same way', async () => {
     const app = appWithFreshStore();
 

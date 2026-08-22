@@ -182,35 +182,44 @@
       "criteria": [
         {
           "text": "Given a virtual meeting recording, when the system processes it, then it should tag the output with [Virtual — Platform].",
-          "passed": false
+          "passed": true
         },
         {
           "text": "Given a physical meeting recording, when the system processes it, then it should tag the output with [In-Person — Location].",
-          "passed": false
+          "passed": true
         },
         {
           "text": "Trust: The system logs the tagging information.",
-          "passed": false
+          "passed": true
         }
       ],
-      "files_touched": [],
-      "tests_added": [],
-      "notes": null,
-      "updated_at": null,
+      "files_touched": [
+        "backend/src/services/audioIngestion/outputTagging.ts",
+        "backend/src/services/audioIngestion/errors.ts",
+        "backend/src/services/audioIngestion/types.ts",
+        "backend/src/services/audioIngestion/audioIngestionService.ts",
+        "backend/src/services/audioIngestion/physicalAudioIngestionService.ts",
+        "backend/src/routes/physicalAudioIngestion.ts"
+      ],
+      "tests_added": [
+        "backend/src/services/audioIngestion/outputTagging.test.ts",
+        "backend/src/services/audioIngestion/audioIngestionService.test.ts",
+        "backend/src/services/audioIngestion/physicalAudioIngestionService.test.ts",
+        "backend/src/routes/audioIngestion.test.ts",
+        "backend/src/routes/physicalAudioIngestion.test.ts"
+      ],
+      "notes": "Physical ingestion gained a new optional 'location' input (nothing captured a room/site name before this story). No location supplied falls back to an honest 'Location unknown' placeholder rather than fabricating one. points_awarded assumes 8/criterion, same convention as STORY-001/002/003 — no explicit per-story value in plan.json.",
+      "updated_at": "2026-08-22T00:00:00Z",
       "verification": {
         "state": "in_progress",
-        "criteria_passed": 0,
+        "criteria_passed": 3,
         "criteria_total": 3,
         "verified_at": null,
         "commit_sha": null,
         "commit_url": null,
         "commit_at": null,
         "points_awarded": null,
-        "outstanding": [
-          "Given a virtual meeting recording, when the system processes it, then it should tag the output with [Virtual — Platform].",
-          "Given a physical meeting recording, when the system processes it, then it should tag the output with [In-Person — Location].",
-          "Trust: The system logs the tagging information."
-        ]
+        "outstanding": []
       }
     },
     {

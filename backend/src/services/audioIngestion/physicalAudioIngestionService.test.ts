@@ -1,6 +1,6 @@
 import { ingestPhysicalRecording } from './physicalAudioIngestionService';
-import { CorruptedAudioError, UnsupportedFormatError } from './errors';
-import { IngestedAudio } from './types';
+import { CorruptedAudioError, TaggingError, UnsupportedFormatError } from './errors';
+import { IngestedAudio, PhysicalAudioSource } from './types';
 import { AudioIngestionLogger } from './audioIngestionService';
 
 function buildWav(samples: number[]): Buffer {
@@ -68,8 +68,31 @@ describe('ingestPhysicalRecording', () => {
     expect(event).toBe('audio_ingested');
     expect(context).toMatchObject({ source: 'room_mic', originalFilename: 'meeting.wav', lowConfidence: false });
 
+    const [tagEvent, tagContext] = logger.calls[1];
+    expect(tagEvent).toBe('output_tagged');
+    expect(tagContext).toMatchObject({
+      source: 'room_mic',
+      meetingType: 'In-Person',
+      header: '[In-Person — Location unknown]',
+      locationUnknown: true,
+    });
+
     // A clean recording is not flagged, so no review-flag event should be logged for it.
     expect(logger.calls.map(([e]) => e)).not.toContain('audio_segment_flagged_for_review');
+  });
+
+  it('acceptance: a supplied location produces a real [In-Person — Location] tag, per REQ-004', () => {
+    const result = ingestPhysicalRecording('room_mic', 'meeting.wav', cleanWav(), {
+      idempotencyStore: new Map(),
+      location: 'Conference Room A',
+    });
+
+    expect(result.outputTag).toEqual({
+      meetingType: 'In-Person',
+      sourceLabel: 'Conference Room A',
+      header: '[In-Person — Conference Room A]',
+      locationUnknown: false,
+    });
   });
 
   it('happy path: a phone recording works the same way', () => {
@@ -127,6 +150,19 @@ describe('ingestPhysicalRecording', () => {
 
     expect(second).toEqual(first);
     expect(idempotencyStore.size).toBe(1);
-    expect(logger.calls.map(([event]) => event)).toEqual(['audio_ingested', 'audio_ingestion_deduplicated']);
+    expect(logger.calls.map(([event]) => event)).toEqual(['audio_ingested', 'output_tagged', 'audio_ingestion_deduplicated']);
+  });
+
+  it('failure path: an internal tagging failure propagates cleanly and leaves no partial state (tagging system failure)', () => {
+    const logger = fakeLogger();
+    const idempotencyStore = new Map<string, IngestedAudio>();
+    const unrecognizedSource = 'carrier_pigeon' as unknown as PhysicalAudioSource;
+
+    expect(() =>
+      ingestPhysicalRecording(unrecognizedSource, 'meeting.wav', cleanWav(), { logger, idempotencyStore })
+    ).toThrow(TaggingError);
+
+    expect(idempotencyStore.size).toBe(0);
+    expect(logger.calls.map(([event]) => event)).not.toContain('audio_ingested');
   });
 });

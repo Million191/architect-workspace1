@@ -619,3 +619,68 @@
     mono crosstalk detection is out of scope until a real diarization
     dependency is approved. Not yet committed — commit is the next step,
     with a message naming STORY-003 per the brief.
+
+- [x] STORY-004 — Tag output with meeting type and source
+  - Date: 2026-08-22
+  - Session: CC-20260822-q7mv
+  - What changed: Implemented REQ-004 as a new pure module,
+    `outputTagging.ts` (`buildOutputTag()`), wired into both existing
+    ingestion paths rather than rebuilt. A real gap surfaced before
+    building: the acceptance criteria need `[In-Person — Location]` for
+    physical recordings, but nothing in the system captured a location —
+    physical ingestion only knew the capture device (`room_mic`/`phone`),
+    not a place. Added an optional `location` field to physical
+    ingestion (route → `IngestPhysicalOptions` → `buildOutputTag`) as a
+    genuinely new, in-scope piece of metadata, kept as an options-object
+    field rather than a new positional parameter specifically to keep
+    the change low-blast-radius (no existing call sites had to shift).
+    Virtual sources needed no new input — `source` already maps to a
+    platform display name (`zoom`→Zoom, `teams`→Teams, `meet`→Google
+    Meet). Put `OutputTag`/`MeetingType` in `types.ts` rather than
+    `outputTagging.ts`, since `outputTagging.ts` already depends on
+    `types.ts` for `AudioSource` — defining the new types there too
+    avoids a circular import between the two modules. Added `outputTag:
+    OutputTag` to `IngestedAudio` (required, not optional — unlike
+    `lowConfidence`/`downloadUrl`, every ingestion of either kind can
+    always be tagged, so there's no "not applicable" case to leave
+    absent). Logged a new `output_tagged` event (Trust criterion) right
+    after `audio_ingested`, only on the fresh-ingest path (not on
+    idempotent-dedup hits), matching STORY-003's convention for
+    `audio_segment_flagged_for_review`. Handled the three failure paths
+    explicitly: incorrect tagging (a new `TaggingError`, added to
+    `errors.ts` alongside the existing `IngestionError` subclasses, when
+    a source doesn't match any known meeting type), missing metadata (a
+    blank/absent `location` falls back to an honest `"Location unknown"`
+    placeholder rather than a fabricated place, and the route accepts a
+    blank location rather than rejecting the upload over it — flagged via
+    a `locationUnknown` boolean on the tag), and tagging system failure
+    (verified, not just argued: added unit tests at the service layer for
+    both ingestion paths that force `buildOutputTag` to throw and confirm
+    it propagates cleanly with no partial state — no idempotency-store
+    write, no misleading `audio_ingested` log).
+  - Verification: `tsc --noEmit` clean. `npx jest`: 120/120 passing
+    across 13 suites (up from 112 before this story — 8 new tests: 3
+    virtual-route acceptance tests proving `[Virtual — Zoom/Teams/Google
+    Meet]` over real HTTP for all three platforms; 2 physical-route tests
+    proving `[In-Person — Conference Room A]` with a supplied location
+    and the `[In-Person — Location unknown]` fallback without one; 1
+    service-level test asserting the exact `outputTag` shape for a
+    supplied physical location; 2 service-level "tagging system failure"
+    tests (one per ingestion path) proving a forced `TaggingError`
+    propagates without leaving partial state). Also strengthened 2
+    existing happy-path tests to assert the actual `output_tagged` log
+    payload content (source/platform, meetingType, header,
+    locationUnknown), not just that the event fired, and updated 2
+    pre-existing idempotency tests whose hardcoded log-sequence
+    assertions didn't yet expect the new event.
+  - Notes: Confidence 80%. This is a genuine walking skeleton: the tag is
+    computed and returned on the ingestion response today, but there is
+    no "minutes output" or rendered header yet for it to actually appear
+    on — that's STORY-008+ territory, correctly out of scope here per the
+    brief's "leave room for it, do NOT build it now." What would raise
+    confidence: seeing `outputTag` actually consumed once STORY-005+
+    exists, and a product decision on whether physical `location` should
+    become a required upload field (vs. today's optional-with-fallback)
+    once real usage shows how often it's left blank. Not yet committed —
+    commit is the next step, with a message naming STORY-004 per the
+    brief.

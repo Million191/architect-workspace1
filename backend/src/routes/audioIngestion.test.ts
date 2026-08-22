@@ -24,10 +24,10 @@ function appWith(deps: {
 }
 
 describe.each([
-  { platform: 'zoom', path: '/api/audio/ingest/zoom', factoryKey: 'zoomClientFactory' as const },
-  { platform: 'teams', path: '/api/audio/ingest/teams', factoryKey: 'teamsClientFactory' as const },
-  { platform: 'meet', path: '/api/audio/ingest/meet', factoryKey: 'meetClientFactory' as const },
-])('POST $path', ({ path, factoryKey }) => {
+  { platform: 'zoom', path: '/api/audio/ingest/zoom', factoryKey: 'zoomClientFactory' as const, expectedHeader: '[Virtual — Zoom]' },
+  { platform: 'teams', path: '/api/audio/ingest/teams', factoryKey: 'teamsClientFactory' as const, expectedHeader: '[Virtual — Teams]' },
+  { platform: 'meet', path: '/api/audio/ingest/meet', factoryKey: 'meetClientFactory' as const, expectedHeader: '[Virtual — Google Meet]' },
+])('POST $path', ({ path, factoryKey, expectedHeader }) => {
   it('acceptance: a virtual meeting recording becomes available for transcription (201)', async () => {
     const client = clientReturning({
       files: [{ id: 'file-happy', fileExtension: 'm4a', fileSizeBytes: 4096, downloadUrl: 'https://example.com/f' }],
@@ -38,6 +38,20 @@ describe.each([
 
     expect(res.status).toBe(201);
     expect(res.body.status).toBe('available_for_transcription');
+  });
+
+  it(`acceptance: tags the output header ${expectedHeader}, per REQ-004`, async () => {
+    const client = clientReturning({
+      files: [{ id: 'file-tag', fileExtension: 'm4a', fileSizeBytes: 4096, downloadUrl: 'https://example.com/f' }],
+    });
+    const app = appWith({ [factoryKey]: () => client });
+
+    const res = await request(app).post(path).send({ meetingRef: 'meeting-tag' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.outputTag.meetingType).toBe('Virtual');
+    expect(res.body.outputTag.header).toBe(expectedHeader);
+    expect(res.body.outputTag.locationUnknown).toBe(false);
   });
 
   it('acceptance: rejects a non-supported audio format with a clear error message (422)', async () => {
