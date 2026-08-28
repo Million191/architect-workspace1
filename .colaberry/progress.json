@@ -270,15 +270,15 @@
       "criteria": [
         {
           "text": "Given an attendee list, when the system processes the audio, then it should map speakers to real names.",
-          "passed": false
+          "passed": true
         },
         {
           "text": "Given no attendee list, when the system processes the audio, then it should label speakers as 'Unidentified Speaker'.",
-          "passed": false
+          "passed": true
         },
         {
           "text": "Trust: The system logs speaker mapping attempts and results.",
-          "passed": false
+          "passed": true
         }
       ],
       "files_touched": [],
