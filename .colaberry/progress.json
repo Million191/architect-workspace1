@@ -3,13 +3,13 @@
   "project": "Meeting Assistant",
   "totals": {
     "stories_total": 20,
-    "stories_verified": 5,
+    "stories_verified": 6,
     "stories_submitted": 0,
-    "stories_in_progress": 15,
+    "stories_in_progress": 14,
     "stories_not_started": 0,
     "criteria_total": 62,
-    "criteria_passed": 17,
-    "points_awarded": 136
+    "criteria_passed": 20,
+    "points_awarded": 160
   },
   "stories": [
     {
@@ -286,19 +286,15 @@
       "notes": null,
       "updated_at": null,
       "verification": {
-        "state": "in_progress",
-        "criteria_passed": 0,
+        "state": "verified",
+        "criteria_passed": 3,
         "criteria_total": 3,
-        "verified_at": null,
-        "commit_sha": null,
-        "commit_url": null,
-        "commit_at": null,
-        "points_awarded": null,
-        "outstanding": [
-          "Given an attendee list, when the system processes the audio, then it should map speakers to real names.",
-          "Given no attendee list, when the system processes the audio, then it should label speakers as 'Unidentified Speaker'.",
-          "Trust: The system logs speaker mapping attempts and results."
-        ]
+        "verified_at": "2026-08-28T23:19:37.000Z",
+        "commit_sha": "1a61917f975a50c6f7bdbfe674c6d25a15cec477",
+        "commit_url": "https://github.com/Million191/architect-workspace1/commit/1a61917f975a50c6f7bdbfe674c6d25a15cec477",
+        "commit_at": "2026-08-28T23:14:26Z",
+        "points_awarded": 24,
+        "outstanding": []
       }
     },
     {
