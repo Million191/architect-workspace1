@@ -765,3 +765,61 @@
     beyond both touching audio-source classification conceptually. If
     this harness belongs to a specific story or directive, worth linking
     it there in a follow-up.
+
+- [x] STORY-005: Transcribe audio with timestamps
+  - Date: 2026-08-27
+  - Session: CC-20260827-pma0
+  - What changed: Added `backend/src/services/transcription/` — `types.ts`
+    (`TranscriptSegment`, `Transcript`, `TranscriptionClient` provider
+    contract), `errors.ts` (`AudioDecodingError`,
+    `TimestampMisalignmentError`, `ContractViolationError`), `auditLog.ts`
+    (parallel to `audioIngestion/auditLog.ts` but tagged
+    `service: 'transcription'` — reusing the ingestion one as-is would
+    have mislabeled every transcription log line), and
+    `transcriptionService.ts`'s `transcribeAudio()`. It sniffs the audio
+    buffer's real bytes against its claimed format before ever calling a
+    provider (reused `sniffAudioFormat` from `audioIngestion`,
+    read-only) so a corrupted file fails deterministically without
+    depending on a fake client's behavior; wraps the provider call in
+    `withTimeoutAndRetry` (also reused read-only from `audioIngestion`,
+    not duplicated or relocated — kept the diff scoped to this story);
+    validates every returned segment is chronological and non-zero-length
+    before accepting it, rejecting anything else as
+    `TimestampMisalignmentError`; and dedupes on `audioId` so
+    re-transcribing the same audio never re-calls a (paid) provider.
+    Every attempt, dedup hit, success, and failure writes an audit event.
+    No real speech-to-text provider is wired in — `TranscriptionClient`
+    is the seam a provider integration will implement later, since
+    introducing a paid external service is a CLAUDE.md escalation
+    trigger, not an implementation detail for this story. No HTTP route
+    added either (discussed with user; acceptance criteria don't require
+    one, and it wasn't part of what was approved step-by-step) — this
+    story is service-layer only, matching STORY-006/007's explicit
+    "leave room, don't build yet" scope note for what comes next.
+  - Verification: `tsc --noEmit` clean across the backend. `npx jest`:
+    135/135 passing across 15 suites (up from 127/14 before this story —
+    8 new tests in `transcriptionService.test.ts`: happy path with
+    timestamped segments, corrupted audio rejected without calling the
+    provider, provider timeout exhausts retries, out-of-order timestamps
+    rejected, zero-length/reversed segment rejected, non-array provider
+    response rejected, idempotency on repeat `audioId`, and an audit-trail
+    test using real `console.log`/`console.error` spies — not a mocked
+    logger — asserting distinct `auditEventId`s across a success and a
+    failure).
+  - Notes: Confidence 80%. All three acceptance criteria pass: (1) every
+    segment in the returned transcript carries `startMs`/`endMs`; (2) a
+    corrupted audio file fails gracefully with `AudioDecodingError` and a
+    clear message; (3) Trust — attempts and results (success and
+    failure) are recorded to the audit trail, proven via real console
+    spies. What would raise confidence: this has never run against a
+    real speech-to-text provider or real (non-synthetic) audio, so
+    provider response shapes this service hasn't anticipated (e.g. a
+    provider that returns confidence scores, word-level timestamps, or
+    a different unit than milliseconds) could surface a
+    `ContractViolationError` in practice that these tests don't cover
+    yet; that's expected to sharpen once a real provider is wired up in
+    a later story. Also: per the audioIngestion precedent, failure-path
+    audit logging normally lives at the route layer, not the service —
+    here it's in the service itself since no route exists yet for this
+    story; if/when a route is added, check for double-logging before
+    reusing this service's failure path underneath it.
