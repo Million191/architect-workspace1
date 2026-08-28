@@ -823,3 +823,67 @@
     here it's in the service itself since no route exists yet for this
     story; if/when a route is added, check for double-logging before
     reusing this service's failure path underneath it.
+
+- [x] STORY-006 — Perform speaker diarization and map speakers
+  - Date: 2026-08-28
+  - Session: CC-20260828-x3f8
+  - What changed: Added `backend/src/services/diarization/` — `types.ts`
+    (`Attendee`, `RawSpeakerSegment`, `DiarizationClient` and
+    `NameMappingClient` provider seams, `DiarizedSegment`,
+    `SpeakerMapping`, `UNIDENTIFIED_SPEAKER_LABEL`), `errors.ts`
+    (`DiarizationError` base, `DiarizationFailedError`,
+    `NameMappingServiceError`, `ContractViolationError`), `auditLog.ts`
+    (parallel to `transcription/auditLog.ts`, tagged
+    `service: 'diarization'`), and `diarizationService.ts`'s
+    `diarizeAndMapSpeakers(transcript, buffer, attendees, options)`. It
+    calls an injectable `DiarizationClient` via `withTimeoutAndRetry`
+    (reused read-only from `audioIngestion`, same as STORY-005) to get
+    raw speaker-tagged segments, validates the response shape, aligns
+    each transcript segment to whichever raw speaker segment overlaps it
+    most by timestamp, then — only if an attendee list was given —
+    resolves raw speaker tags to real names via an injectable
+    `NameMappingClient`. Three failure paths handled: a diarization
+    provider failure/timeout after retries has no safe fallback and
+    throws `DiarizationFailedError` (audited); a name-mapping service
+    failure/timeout degrades every speaker to `'Unidentified Speaker'`
+    rather than failing the whole result (audited, not thrown); a
+    mapping response naming someone not on the attendee list is dropped
+    as untrusted rather than applied (audited as
+    `incorrect_speaker_mapping`). No attendee list at all skips name
+    mapping entirely and everyone is `'Unidentified Speaker'`. Dedupes
+    on `transcript.id` so re-diarizing the same transcript never
+    re-calls either provider. Every attempt, dedup hit, success, and
+    failure writes an audit event. No real diarization or name-mapping
+    provider is wired in — same paid-external-dependency governance
+    boundary STORY-005 drew for `TranscriptionClient`. No HTTP route
+    added (service-layer only, per discussion, same scope note STORY-005
+    left for STORY-006/007).
+  - Verification: `tsc --noEmit` clean across the backend. `npx jest`:
+    142/142 passing across 16 suites (up from 135/15 before this story —
+    7 new tests in `diarizationService.test.ts`: happy path mapping
+    speakers to attendee names, no-attendee-list path labeling everyone
+    `'Unidentified Speaker'` without ever calling the name-mapping
+    provider, diarization-provider timeout exhausting retries and
+    throwing `DiarizationFailedError` without calling the name-mapping
+    provider, a name-mapping-service timeout degrading every speaker to
+    `'Unidentified Speaker'`, an untrusted mapped name being dropped
+    rather than applied, idempotency on repeat `transcript.id`, and an
+    audit-trail trust test using real `console.log`/`console.error`
+    spies asserting distinct `auditEventId`s across a success and a
+    failure).
+  - Notes: Confidence 80%. All three acceptance criteria pass: (1) given
+    an attendee list, speakers map to real names; (2) given no attendee
+    list, speakers are labeled `'Unidentified Speaker'`; (3) Trust —
+    attempts and results are recorded to the audit trail, proven via
+    real console spies. What would raise confidence: this has never run
+    against a real diarization or name-mapping provider, so real
+    response shapes (word-level speaker confidence scores, a different
+    tag format, fuzzy/partial name matches instead of exact
+    attendee-name strings) could surface a `ContractViolationError` or
+    an unnecessarily strict "not on the attendee list" rejection in
+    practice that these tests don't cover. Also flagging: this session
+    found `.colaberry/progress.json` had STORY-006's three criteria
+    pre-marked `passed: true` with empty `files_touched`/`tests_added`
+    before any code existed — that flag was stale; this entry's
+    verification is grounded in the actual test run above, not that
+    pre-existing value.
