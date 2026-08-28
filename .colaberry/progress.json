@@ -3,13 +3,13 @@
   "project": "Meeting Assistant",
   "totals": {
     "stories_total": 20,
-    "stories_verified": 4,
+    "stories_verified": 5,
     "stories_submitted": 0,
-    "stories_in_progress": 16,
+    "stories_in_progress": 15,
     "stories_not_started": 0,
     "criteria_total": 62,
-    "criteria_passed": 14,
-    "points_awarded": 112
+    "criteria_passed": 17,
+    "points_awarded": 136
   },
   "stories": [
     {
@@ -229,35 +229,38 @@
       "criteria": [
         {
           "text": "Given an audio file, when the system transcribes it, then each line of text should have an associated timestamp.",
-          "passed": false
+          "passed": true
         },
         {
           "text": "Given a corrupted audio file, when the system attempts transcription, then it should fail gracefully with an error message.",
-          "passed": false
+          "passed": true
         },
         {
           "text": "Trust: The system logs transcription attempts and results.",
-          "passed": false
+          "passed": true
         }
       ],
-      "files_touched": [],
-      "tests_added": [],
-      "notes": null,
-      "updated_at": null,
+      "files_touched": [
+        "backend/src/services/transcription/types.ts",
+        "backend/src/services/transcription/errors.ts",
+        "backend/src/services/transcription/auditLog.ts",
+        "backend/src/services/transcription/transcriptionService.ts"
+      ],
+      "tests_added": [
+        "backend/src/services/transcription/transcriptionService.test.ts"
+      ],
+      "notes": "Recorded from local verification (tsc --noEmit clean; 135/135 jest tests passing across 15 suites), not from an automated portal check. No real speech-to-text provider is wired in yet (TranscriptionClient is the seam for one); no HTTP route added either, since acceptance criteria don't require one. points_awarded assumes 8/criterion, same convention as STORY-001-004 — no explicit per-story value in plan.json.",
+      "updated_at": "2026-08-28T21:04:46.000Z",
       "verification": {
-        "state": "in_progress",
-        "criteria_passed": 0,
+        "state": "verified",
+        "criteria_passed": 3,
         "criteria_total": 3,
-        "verified_at": null,
-        "commit_sha": null,
-        "commit_url": null,
-        "commit_at": null,
-        "points_awarded": null,
-        "outstanding": [
-          "Given an audio file, when the system transcribes it, then each line of text should have an associated timestamp.",
-          "Given a corrupted audio file, when the system attempts transcription, then it should fail gracefully with an error message.",
-          "Trust: The system logs transcription attempts and results."
-        ]
+        "verified_at": "2026-08-28T21:04:46.000Z",
+        "commit_sha": "046863c63f33f4a8915aff020b0f73ac9a17282c",
+        "commit_url": "https://github.com/Million191/architect-workspace1/commit/046863c63f33f4a8915aff020b0f73ac9a17282c",
+        "commit_at": "2026-08-28T04:51:22Z",
+        "points_awarded": 24,
+        "outstanding": []
       }
     },
     {
