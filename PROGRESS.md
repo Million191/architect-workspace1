@@ -1167,3 +1167,80 @@
     reviewer fills gaps" is the right UX for the minutes document. Not
     yet committed — commit is the next step, with a message naming
     STORY-010.
+
+- [x] STORY-011 — Extract action items into a table format
+  - Date: 2026-08-29
+  - Session: CC-20260829-t8qz
+  - What changed: Added `backend/src/services/actionItemExtraction/` —
+    `types.ts` (`RawActionItem`, `ActionItemExtractionClient` provider
+    seam, `ActionItem` with `missingFields`/`flaggedForReview`,
+    `ActionItemTable`, `ExtractActionItemsInput`), `errors.ts`
+    (`ActionItemExtractionError` base, `ContractViolationError`,
+    `IncorrectActionItemExtractionError`,
+    `ActionItemExtractionFailedError`), `auditLog.ts` (parallel to
+    `decisionExtraction/auditLog.ts`, tagged `service:
+    'actionItemExtraction'`), and `actionItemExtractionService.ts`'s
+    `extractActionItems()`. Implemented REQ-011 with an injectable
+    `ActionItemExtractionClient` provider seam — the same governance
+    boundary STORY-005/006 drew for `TranscriptionClient`/
+    `DiarizationClient` and STORY-009/010 drew for
+    `TopicSummarizationClient`/`DecisionExtractionClient`, since real
+    action-item extraction needs actual NLP, not a heuristic, and wiring
+    a paid external service is a CLAUDE.md escalation trigger outside
+    this story's scope. Built on STORY-007's `MarkedTranscript`, reused
+    rather than rebuilt. Three failure paths, mapped to the story's three
+    named ones: `ContractViolationError` (missing action item fields at
+    the input boundary — missing transcript id, non-array/empty
+    segments, invalid segment text/timestamps), and note this is
+    distinct from a single item's own missing owner/dueDate/priority/
+    status, which is handled by flagging, not throwing (see below);
+    `IncorrectActionItemExtractionError` (incorrect action item
+    extraction — provider response not an array, an item missing its
+    task text, an unrecognized `priority`/`status` enum value, or a
+    `sourceTimestampMs` outside the transcript's own segment span — this
+    last check is a new validation beyond STORY-010's precedent, since
+    `RawDecision` had no enum fields to validate);
+    `ActionItemExtractionFailedError` (action item extraction failure at
+    the provider boundary — provider fails or times out after exhausting
+    retries, no heuristic fallback exists, same seam
+    STORY-005/006/009/010 left open). A decision item missing
+    owner/dueDate/priority/status/sourceTimestampMs is listed anyway with
+    those gaps named in `missingFields` and `flaggedForReview` set true —
+    satisfying "flag unclear action items for review" without dropping
+    the item from the minutes, same pattern STORY-010 set for decisions.
+    Dedupes on `transcript.id`. No HTTP route added (service-layer only,
+    matching STORY-005/006/008/009/010's scope note).
+  - Verification: `tsc --noEmit` clean across the backend. `npx jest`:
+    179/179 passing across 21 suites (up from 171/20 before this story —
+    8 new tests in `actionItemExtractionService.test.ts`: happy path with
+    a complete action item, missing-fields flagging without rejection,
+    `ContractViolationError` on non-array segments,
+    `IncorrectActionItemExtractionError` on an out-of-range timestamp,
+    `IncorrectActionItemExtractionError` on an unrecognized priority
+    value (new case beyond STORY-010's precedent),
+    `ActionItemExtractionFailedError` after a hanging provider exhausts
+    retries, idempotency on repeat `transcriptId`, and an audit-trail
+    trust test using real `console.log`/`console.error` spies asserting
+    distinct `auditEventId`s across a success and a failure). Corrected
+    `.colaberry/progress.json`'s STORY-011 criteria in this same commit:
+    they had been pre-marked `passed: true` in the uncommitted working
+    tree before any code for this story existed — same stale-flag pattern
+    STORY-006/007/008 already called out — flagged to the user at session
+    start rather than trusted, now replaced with the real verification
+    above.
+  - Notes: Confidence 65% — same class of limitation as
+    STORY-005/006/009/010: `ActionItemExtractionClient` has no real
+    implementation, so the structural validation (array shape, enum
+    values, timestamp-in-range) is only proven against synthetic
+    fixtures, not a real NLP/LLM provider's actual response shape. A real
+    provider might return priority/status vocabulary that doesn't match
+    the three/three enum values assumed here (an implementation-level
+    choice made and logged at the start of this session, not yet
+    confirmed against any real usage), which could force either a looser
+    validation contract or a normalization step once a real provider is
+    chosen. What would raise confidence: a real action-item-extraction/
+    LLM provider integration to validate `RawActionItem` against reality,
+    plus product input on whether the assumed priority/status vocabulary
+    matches what PMs actually expect in the minutes table. Not yet
+    committed — commit is the next step, with a message naming
+    STORY-011.
