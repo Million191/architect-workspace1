@@ -1104,3 +1104,66 @@
     validate the `RawTopicSegment` shape against reality. Not yet
     committed — commit is the next step, with a message naming
     STORY-009.
+
+- [x] STORY-010 — List decisions made with rationale and approver
+  - Date: 2026-08-29
+  - Session: CC-20260829-w4k7
+  - What changed: Added `backend/src/services/decisionExtraction/` —
+    `types.ts` (`RawDecision`, `DecisionExtractionInput`,
+    `DecisionExtractionClient` provider seam, `Decision` with
+    `missingFields`/`flaggedForReview`, `DecisionListing`,
+    `ListDecisionsInput`), `errors.ts` (`DecisionExtractionError` base,
+    `ContractViolationError`, `IncorrectDecisionListingError`,
+    `DecisionExtractionFailedError`), `auditLog.ts` (parallel to
+    `discussionSummary/auditLog.ts`, tagged `service:
+    'decisionExtraction'`), and `decisionExtractionService.ts`'s
+    `listDecisions()`. Implemented REQ-010 with an injectable
+    `DecisionExtractionClient` provider seam — the same governance
+    boundary STORY-005/006 drew for `TranscriptionClient`/
+    `DiarizationClient` and STORY-009 drew for
+    `TopicSummarizationClient` — since real decision extraction needs
+    actual NLP, not a heuristic, and wiring a paid external service is a
+    CLAUDE.md escalation trigger outside this story's scope. Built on
+    STORY-007's `MarkedTranscript`. Three failure paths, mapped to the
+    story's three named ones: `ContractViolationError` (decision
+    extraction failure at the input boundary — missing transcript id,
+    non-array/empty segments, invalid segment text/timestamps),
+    `IncorrectDecisionListingError` (incorrect decision listing —
+    provider response not an array, a decision missing its label, or a
+    timestamp outside the transcript's own segment span),
+    `DecisionExtractionFailedError` (decision extraction failure at the
+    provider boundary — provider fails or times out after exhausting
+    retries, no heuristic fallback exists, same seam STORY-005/006/009
+    left open). The "missing decision fields" path is handled
+    differently from the other two: rather than throwing, a decision
+    missing rationale/approver/timestamp is listed anyway with those
+    gaps named in `missingFields` and `flaggedForReview` set true —
+    satisfying the acceptance criterion literally ("flag the missing
+    fields for review") without dropping the decision from the minutes.
+    Dedupes on `transcript.id`. No HTTP route added (service-layer only,
+    matching STORY-005/006/008/009's scope note).
+  - Verification: `tsc --noEmit` clean across the backend. `npx jest`:
+    171/171 passing across 20 suites (up from 164/19 before this story —
+    7 new tests in `decisionExtractionService.test.ts`: happy path with
+    a complete decision, missing-fields flagging without rejection,
+    `ContractViolationError` on non-array segments,
+    `IncorrectDecisionListingError` on an out-of-range timestamp,
+    `DecisionExtractionFailedError` after a hanging provider exhausts
+    retries, idempotency on repeat `transcriptId`, and an audit-trail
+    trust test using real `console.log`/`console.error` spies asserting
+    distinct `auditEventId`s across a success and a failure).
+  - Notes: Confidence 65% — same class of limitation as
+    STORY-005/006/009: `DecisionExtractionClient` has no real
+    implementation, so the structural validation (array shape,
+    timestamp-in-range) is only proven against synthetic fixtures, not a
+    real NLP/LLM provider's actual response shape. A real provider might
+    not naturally return a clean array of decision objects (e.g.
+    decisions embedded in free text needing a separate parse step),
+    which could force a redesign of the validation contract once a real
+    provider is chosen. What would raise confidence: a real
+    decision-extraction/LLM provider integration to validate
+    `RawDecision` against reality, plus product input on whether
+    "missing fields flagged but still listed" vs "excluded until
+    reviewer fills gaps" is the right UX for the minutes document. Not
+    yet committed — commit is the next step, with a message naming
+    STORY-010.
