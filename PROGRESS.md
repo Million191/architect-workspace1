@@ -963,3 +963,72 @@
     entry called out) — asked the user directly, who confirmed intent to
     have the story actually built; `.colaberry/progress.json` is corrected
     in this commit to reflect the real verification above.
+
+- [x] STORY-008 — Generate meeting summary
+  - Date: 2026-08-28
+  - Session: CC-20260828-q7m4
+  - What changed: Added `backend/src/services/meetingSummary/` —
+    `types.ts` (`MeetingContext` for caller-supplied `title`/`objective`/
+    `scheduledAt`, since no calendar-invite ingestion story exists yet;
+    `MeetingSummary` output with a `missingFields: SummaryFieldName[]`
+    array), `errors.ts` (`MeetingSummaryError` base, `ContractViolationError`,
+    `SummaryGenerationTimeoutError`), `auditLog.ts` (parallel to
+    `diarization/auditLog.ts` and `segmentMarking/auditLog.ts`, tagged
+    `service: 'meetingSummary'`), and `meetingSummaryService.ts`'s
+    `generateMeetingSummary(input)`. Before building, worked out that two of
+    REQ-008's seven fields — title and objective — have no data source
+    anywhere in the codebase (no calendar/invite ingestion story exists),
+    so they're only ever caller-supplied via the new optional
+    `MeetingContext` and flagged missing when absent, never inferred from
+    transcript text — matching the architecture doc's "grounded only in
+    what the transcript actually contains, never fabricate" rule. The other
+    five fields reuse data STORY-001–006 already compute: `format` and
+    `platform/location` come from `IngestedAudio.outputTag`
+    (`meetingType`/`sourceLabel`), including its existing `locationUnknown`
+    flag for physical recordings with no location — `platformOrLocation` is
+    left unset (and flagged) rather than shipping the `"Location unknown"`
+    placeholder string as if it were real data; `attendees` reuses the same
+    `Attendee[]` list STORY-006's diarization already accepts; `date`/`time`
+    prefer `MeetingContext.scheduledAt` (a real calendar timestamp) when
+    supplied, else fall back to `IngestedAudio.ingestedAt`, and are flagged
+    missing (not defaulted to a wrong value) if that timestamp turns out
+    unparseable. Dedupes on `transcript.id`. Assembly is wrapped in
+    `withTimeoutAndRetry` (`maxAttempts: 1` — retrying deterministic sync
+    logic against a timeout can't change the outcome) so
+    `SummaryGenerationTimeoutError` exists as an explicit, capped boundary
+    per CLAUDE.md's Failure-First Design; documented honestly in `errors.ts`
+    as a defensive guard on an in-memory step, not a real external call —
+    the same "no external client to wrap" scope note STORY-007 made.
+    Malformed input (non-array `attendees`, missing transcript/audio id or
+    outputTag) throws `ContractViolationError` rather than guessing a
+    summary. Every attempt, dedup hit, success, and failure writes an audit
+    event. No HTTP route added (service-layer only, matching
+    STORY-005/006/007's scope note).
+  - Verification: `tsc --noEmit` clean across the backend. `npx jest`:
+    157/157 passing across 18 suites (up from 151/17 before this story — 6
+    new tests in `meetingSummaryService.test.ts`: a happy path with a full
+    `MeetingContext` populating all seven fields, missing information (no
+    context, no attendees, an unknown physical location) flagging exactly
+    `title`/`platformOrLocation`/`attendees`/`objective` in `missingFields`
+    (`date`/`time` still resolve from `ingestedAt`), an unparseable
+    timestamp flagging `date`/`time` too rather than shipping a bad value,
+    malformed input (`attendees` not an array) throwing
+    `ContractViolationError`, idempotency on repeat `transcript.id`, and an
+    audit-trail trust test using real `console.log`/`console.error` spies
+    asserting distinct `auditEventId`s across a success and a failure).
+  - Notes: The "summary generation timeout" failure path is real,
+    reachable code (`SummaryGenerationTimeoutError`, wired through
+    `withTimeoutAndRetry`), but not independently testable today: assembly
+    is purely synchronous with no `await`, so its wrapping promise always
+    settles in a microtask before `withTimeoutAndRetry`'s timer (a
+    macrotask) can ever fire. Documented in the test file rather than faked
+    with a test that wouldn't actually exercise the path — same honesty
+    call STORY-007 made for its untuned confidence thresholds. Also worth
+    flagging: this session found `.colaberry/progress.json` had STORY-008's
+    three criteria already flipped to `passed: true` in the uncommitted
+    working tree (HEAD still had `false`) before any code existed for this
+    story — same stale-flag pattern STORY-006/007's entries called out,
+    here as an uncommitted edit rather than a committed one.
+    `.colaberry/progress.json` is corrected in the follow-up verification
+    commit to reflect the real verification above, superseding that
+    pre-existing edit rather than silently trusting it.
