@@ -1032,3 +1032,75 @@
     `.colaberry/progress.json` is corrected in the follow-up verification
     commit to reflect the real verification above, superseding that
     pre-existing edit rather than silently trusting it.
+
+- [x] STORY-009 — Summarize key discussion points
+  - Date: 2026-08-28
+  - Session: CC-20260828-rtcn
+  - What changed: Added `backend/src/services/discussionSummary/` —
+    `types.ts` (`RawTopicSegment`, `TopicSummarizationClient`/
+    `TopicSummarizationInput` provider seam, `DiscussionTopic`,
+    `DiscussionSummary`, `SummarizeDiscussionInput`), `errors.ts`
+    (`DiscussionSummaryError` base, `ContractViolationError`,
+    `IncorrectTopicGroupingError`, `TopicSummarizationFailedError`),
+    `auditLog.ts` (parallel to `meetingSummary/auditLog.ts`, tagged
+    `service: 'discussionSummary'`), and `discussionSummaryService.ts`'s
+    `summarizeDiscussionPoints()`. Implemented REQ-009 with an injectable
+    `TopicSummarizationClient` provider seam — the same governance
+    boundary STORY-005 drew for `TranscriptionClient` and STORY-006 drew
+    for `DiarizationClient` — since real topic grouping/summarization
+    needs actual NLP, not a heuristic, and wiring a paid external service
+    is a CLAUDE.md escalation trigger outside this story's scope. Built
+    on STORY-007's `MarkedTranscript` (not a raw `Transcript`), so the
+    review-flagging criterion reuses existing `audibility` marking
+    instead of re-deriving it: `buildTopics()` assigns each segment to
+    its containing topic range by start time, then flags a topic for
+    review whenever any of its segments have `audibility !== 'clear'`,
+    collecting their markers into `flagReasons`. Before the provider's
+    response is trusted, `validateTopicCoverage()` confirms the returned
+    ranges start at the transcript's first segment, end at its last, and
+    are contiguous with no gap or overlap between consecutive
+    topics — this validation *is* the "incorrect topic grouping" failure
+    path, not just a shape check. Three failure paths, each with its own
+    error class: `ContractViolationError` (discussion point extraction
+    failure — missing transcript id, non-array/empty segments, invalid
+    segment text/timestamps), `IncorrectTopicGroupingError` (provider
+    succeeded but returned invalid coverage), `TopicSummarizationFailedError`
+    (provider failed or timed out after exhausting retries — no heuristic
+    fallback exists, same as `DiarizationFailedError`'s precedent). Fixed
+    a real bug found while writing the trust test: `validateInput()` was
+    originally called before the attempt log and outside the try/catch,
+    so a malformed-input failure never reached the audit trail,
+    contradicting the story's own Trust criterion — moved validation
+    inside the try block (best-effort `transcriptId` extracted first for
+    logging/dedup only, matching `meetingSummaryService.ts`'s precedent)
+    so every failure, not just successes, is now audited. Dedupes on
+    `transcript.id`. No HTTP route added (service-layer only, matching
+    STORY-005/006/007/008's scope note).
+  - Verification: `tsc --noEmit` clean across the backend. `npx jest`:
+    164/164 passing across 19 suites (up from 157/18 before this story —
+    7 new tests in `discussionSummaryService.test.ts`: happy path
+    grouping discussion points by topic with timestamp ranges, an
+    unclear segment flagging its containing topic for review while a
+    fully-clear topic is not flagged, extraction failure on non-array
+    segments throwing `ContractViolationError`, incorrect topic grouping
+    on a gapped range throwing `IncorrectTopicGroupingError`, a provider
+    timeout exhausting retries and throwing
+    `TopicSummarizationFailedError`, idempotency on repeat
+    `transcript.id`, and an audit-trail trust test using real
+    `console.log`/`console.error` spies asserting distinct
+    `auditEventId`s across a success and a (now-audited) extraction
+    failure).
+  - Notes: Confidence 65% — same class of limitation as STORY-005/006:
+    `TopicSummarizationClient` has no real implementation, so the
+    coverage-validation logic (order/contiguity/full-span checks) is
+    only proven against synthetic fixtures, not a real provider's actual
+    response shape. A real summarization provider might not naturally
+    return clean, non-overlapping topic ranges (e.g. multiple topics
+    genuinely active in the same time window, or per-utterance topic
+    tags rather than contiguous ranges), which could force a redesign of
+    the validation contract once a real provider is chosen — this is an
+    honest design-risk flag, not a hidden gap. What would raise
+    confidence: a real topic-summarization/LLM provider integration to
+    validate the `RawTopicSegment` shape against reality. Not yet
+    committed — commit is the next step, with a message naming
+    STORY-009.
