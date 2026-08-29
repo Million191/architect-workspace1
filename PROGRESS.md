@@ -1612,3 +1612,76 @@
     uncommitted files (`meeting-assistant/server.py`,
     `UXDesigner_FieldGuide.html`) were left untouched — not part of this
     story.
+
+- [x] STORY-013 — Draft individualized emails for participants
+  - Date: 2026-08-29
+  - Session: CC-20260829-q7t2
+  - What changed: Added `backend/src/services/emailDrafting/` (`types.ts`,
+    `errors.ts`, `auditLog.ts`, `emailDraftingService.ts`,
+    `emailDraftingService.test.ts`), implementing `draftEmails()` (REQ-014).
+    Built as a paced, one-step-at-a-time session per the story brief,
+    following the exact per-service pattern every prior story in this tree
+    has used since STORY-005. `draftEmails()` calls reviewGate's
+    `assertApprovedForEmailDrafting` (the seam STORY-012 built specifically
+    for this story) before drafting anything — `SessionNotFoundError`/
+    `ReviewNotApprovedError` propagate unchanged rather than being
+    re-wrapped, since those are already the correctly-typed "failure to
+    wait for approval" errors. For each name in the approved draft's
+    `meetingSummary.attendees`, it builds one `DraftedEmail` containing the
+    shared discussion topics and decisions plus only that attendee's own
+    action items (case-insensitive `owner` match, the same matching
+    convention the meeting-assistant MCP server's `search_action_items`
+    tool already uses) — or the exact required sentence, "No action items
+    assigned to you from this meeting.", when they have none. An action
+    item whose `owner` matches no attendee (a typo, someone off the
+    attendee list) is not attached to any email; it is surfaced in a
+    batch-level `unmatchedActionItems` list with `flaggedForReview: true`
+    rather than silently dropped or misattached — this is the story's
+    "incorrect email personalization" failure path made structurally
+    explicit. An approved draft with zero attendees throws
+    `EmailDraftingFailedError` (the "email drafting logic failure" /
+    "failure to draft emails" paths) rather than silently returning an
+    empty batch that looks like a successful run. No `recipientEmail`
+    field exists on `DraftedEmail` — no `Attendee` record anywhere in this
+    codebase carries an email address (see `diarization/types.ts`), so one
+    wasn't invented; only drafting is in scope here, not delivery
+    (STORY-014/015). No HTTP route added, matching the service-layer-only
+    convention established since STORY-005.
+  - Verification: `tsc --noEmit` clean across the backend. `npx jest`:
+    215/215 passing across 24 suites (up from 206/23 before this story — 9
+    new tests in `emailDraftingService.test.ts`), covering all three
+    acceptance criteria directly: (1) happy path — an approved draft with
+    action items for two different attendees produces two emails, each
+    containing only its own attendee's task and never the other's; (2) the
+    no-action-items participant gets the exact required sentence, verified
+    with a literal string match, not a paraphrase check; (3) Trust — a
+    fake-logger test asserts the `email_drafting_attempted` →
+    `emails_drafted` event sequence, and a real (non-mocked)
+    `console.error` spy test asserts a `email_drafting_failed` audit entry
+    with `outcome: 'failure'` and `error_class: 'SessionNotFoundError'` for
+    a gate-check against a session that was never submitted. The three
+    named failure paths are each covered directly: "incorrect email
+    personalization" (unmatched-owner-name case, asserted absent from both
+    real attendees' emails and present in `unmatchedActionItems` with
+    `flaggedForReview: true`), "failure to draft emails" (zero-attendee
+    approved draft throws `EmailDraftingFailedError`; missing
+    `reviewGateSessionId` throws `ContractViolationError`), and "email
+    drafting logic failure" (both Gate #1 block paths — still-`pending_review`
+    and never-submitted — propagate `ReviewNotApprovedError`/
+    `SessionNotFoundError` unchanged, with no emails drafted).
+  - Notes: Confidence 90%. `.colaberry/progress.json`'s STORY-013 block had
+    all three `criteria[].passed` already pre-set to `true` before any code
+    for this story existed — the same pre-existing stale-flag issue a prior
+    session already caught and corrected for STORY-011 — flagged to the
+    user at session start, now grounded in the real verification above
+    rather than trusted as-is. What would raise confidence to higher:
+    STORY-014 (Gate #2, mandatory review before sending) actually calling
+    into this batch and a test proving *it* refuses to send past an
+    unapproved `EmailDraftBatch`, the same way this story proved Gate #1
+    can't be skipped. Also worth flagging: this service currently
+    round-trips discussion topics/decisions into email body text as plain
+    strings (no HTML/markdown rendering, no subject-line templating
+    beyond the meeting title) — sufficient for this story's acceptance
+    criteria, but a real "review the draft email" UI (Gate #2, STORY-014)
+    will likely want a richer body shape than one flat string; not built
+    here since the brief said to leave STORY-014 room, not build it.
