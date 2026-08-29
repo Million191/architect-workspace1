@@ -10,6 +10,12 @@ export interface TranscriptSegment {
   /** Always > startMs; a zero-length or reversed segment is a timestamp-misalignment failure, not a valid segment. */
   endMs: number;
   text: string;
+  /**
+   * Provider-reported confidence for this segment, 0-1. Absent means the provider didn't report
+   * one (no real speech-to-text provider is wired in yet, per STORY-005's notes) rather than
+   * "fully confident" — REQ-007's inaudible/unclear marking treats absence as unscored, not clear.
+   */
+  confidence?: number;
 }
 
 export interface Transcript {
@@ -33,6 +39,8 @@ export interface RawTranscriptSegment {
   startMs: number;
   endMs: number;
   text: string;
+  /** Provider-reported confidence, 0-1, when the provider supports it. See `TranscriptSegment.confidence`. */
+  confidence?: number;
 }
 
 /**

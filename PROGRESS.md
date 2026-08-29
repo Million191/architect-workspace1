@@ -887,3 +887,79 @@
     before any code existed — that flag was stale; this entry's
     verification is grounded in the actual test run above, not that
     pre-existing value.
+
+- [x] STORY-007 — Mark inaudible or uncertain segments
+  - Date: 2026-08-28
+  - Session: CC-20260828-h6t2
+  - What changed: Added `backend/src/services/segmentMarking/` — `types.ts`
+    (`SegmentAudibility`, the exact `[inaudible]`/`[unclear — verify]` marker
+    strings REQ-007 specifies, confidence thresholds, `MarkedSegment`/
+    `MarkedTranscript`), `errors.ts` (`SegmentMarkingError` base,
+    `ContractViolationError`), `auditLog.ts` (parallel to
+    `diarization/auditLog.ts`, tagged `service: 'segmentMarking'`), and
+    `segmentMarkingService.ts`'s `markSegments(transcript)`. Before building,
+    flagged and got explicit sign-off on the real design gap: with no real
+    speech-to-text provider wired in yet (same seam STORY-005/006 left open),
+    nothing existing could independently judge audibility. Extended
+    `TranscriptSegment`/`RawTranscriptSegment` in `transcription/types.ts`
+    with an optional `confidence` field (0-1, provider-supplied, absent
+    means unscored) — the same "extend an existing type when the story
+    genuinely needs a new signal" precedent STORY-003/004 set — and fixed
+    `transcriptionService.ts`'s `validateSegments` map, which previously
+    destructured `{ startMs, endMs, text }` and would have silently dropped
+    `confidence` even if a provider supplied it. Marking uses two
+    independent signals: empty/whitespace-only `text` is a direct,
+    provider-independent "couldn't be heard" signal (`inaudible` regardless
+    of `confidence`); `confidence` bands apply when a provider reports one
+    (`< 0.3` → `inaudible`, `< 0.6` → `unclear`, else `clear`). A segment
+    with neither signal tripped defaults to `clear` — absence of trouble is
+    never guessed into `unclear`, satisfying the "clear segment is not
+    marked inaudible" criterion directly. Unlike STORY-005/006,
+    `markSegments` is synchronous with no external client — it judges
+    audibility purely from data the transcript already carries, so there's
+    no provider call to wrap in `withTimeoutAndRetry`; documented as a
+    deliberate scope call in the function's doc comment, not an oversight.
+    Malformed input (non-array `segments`, non-string `text`, out-of-range/
+    NaN `confidence`) throws `ContractViolationError` rather than guessing a
+    mark — this is the story's "marking system failure" failure path. The
+    "failure to detect inaudible segments" failure path isn't an
+    exception-throwing case (same as STORY-003's mono-crosstalk limitation)
+    — it's an honest heuristic limitation, documented in code and in the
+    Notes below rather than hidden. Dedupes on `transcript.id` so
+    re-marking the same transcript is a no-op. Every attempt, dedup hit,
+    success, and failure writes an audit event. No HTTP route added
+    (service-layer only, matching STORY-005/006's scope note).
+  - Verification: `tsc --noEmit` clean across the backend. `npx jest`:
+    151/151 passing across 17 suites (up from 142/16 before this story — 9
+    new tests in `segmentMarkingService.test.ts`: a clear segment with no
+    confidence reported stays unmarked, a clear high-confidence segment
+    stays unmarked, an empty-text segment marks `[inaudible]`, a
+    low-confidence segment marks `[inaudible]`, a mid-confidence segment
+    marks `[unclear — verify]` — distinct from `[inaudible]`, an
+    out-of-range confidence throws `ContractViolationError`, non-string
+    text throws `ContractViolationError`, idempotency on repeat
+    `transcript.id`, and an audit-trail trust test using real
+    `console.log`/`console.error` spies asserting distinct `auditEventId`s
+    across a success and a failure). Also re-ran the full pre-existing
+    suite after the `transcription/types.ts` and `transcriptionService.ts`
+    edits to confirm the `confidence` field addition didn't regress
+    STORY-005's behavior — all pre-existing tests passed unchanged.
+  - Notes: Confidence 65% — lower than STORY-005/006, and for a specific,
+    named reason: the `inaudible`/`unclear` confidence bands only do
+    anything once a real transcription provider actually reports
+    per-segment `confidence` scores, which none does yet (same gap
+    STORY-005 left open). Today, the only signal that fires against
+    realistic data is the empty-text case — a provider returning nothing
+    for a segment it couldn't transcribe — so the acceptance criteria pass
+    against synthetic fixtures exercising both signals, but only the
+    empty-text path is proven against what a real provider is likely to
+    actually produce. What would raise confidence: a real provider
+    integration (STORY-005's open gap) whose `confidence` values validate
+    the 0.3/0.6 thresholds against real inaudible/uncertain audio rather
+    than untuned constants. Also worth flagging: this session found
+    `.colaberry/progress.json` had STORY-007's three criteria manually
+    marked `passed: true` with empty `files_touched`/`tests_added` before
+    any code existed for this story (same stale-flag pattern STORY-006's
+    entry called out) — asked the user directly, who confirmed intent to
+    have the story actually built; `.colaberry/progress.json` is corrected
+    in this commit to reflect the real verification above.

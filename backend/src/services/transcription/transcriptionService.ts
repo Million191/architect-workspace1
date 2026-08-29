@@ -78,7 +78,7 @@ function validateSegments(raw: RawTranscriptSegment[], audioId: string): Transcr
     previousEndMs = segment.endMs;
   }
 
-  return raw.map(({ startMs, endMs, text }) => ({ startMs, endMs, text }));
+  return raw.map(({ startMs, endMs, text, confidence }) => ({ startMs, endMs, text, confidence }));
 }
 
 export interface TranscribeOptions {
