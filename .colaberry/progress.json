@@ -411,19 +411,15 @@
       "notes": "Recorded from local verification (tsc --noEmit clean; 164/164 jest tests passing across 19 suites), not from an automated portal check. Topic grouping/summarization is delegated to an injectable TopicSummarizationClient provider seam - the same governance boundary STORY-005/006 drew for TranscriptionClient/DiarizationClient - since no heuristic in this codebase can honestly group transcript text into topics; no real provider is wired in yet. Review-flagging reuses STORY-007's MarkedSegment.audibility rather than re-deriving it. The provider's returned topic ranges are validated for full, contiguous, in-order coverage of the transcript before being trusted, which is what makes 'incorrect topic grouping' a real, testable failure path (IncorrectTopicGroupingError) rather than blind trust in the response. points_awarded assumes 8/criterion, same convention as STORY-001-008 - no explicit per-story value in plan.json.",
       "updated_at": "2026-08-28T00:00:00.000Z",
       "verification": {
-        "state": "in_progress",
-        "criteria_passed": 0,
+        "state": "verified",
+        "criteria_passed": 3,
         "criteria_total": 3,
-        "verified_at": null,
-        "commit_sha": null,
-        "commit_url": null,
-        "commit_at": null,
-        "points_awarded": null,
-        "outstanding": [
-          "Given a transcribed meeting, when the system summarizes discussion points, then it should group them by topic with timestamp references.",
-          "Given unclear discussion points, when the system summarizes them, then it should flag them for review.",
-          "Trust: The system logs discussion point summaries and flags."
-        ]
+        "verified_at": "2026-08-28T00:00:00.000Z",
+        "commit_sha": "c99c885",
+        "commit_url": "https://github.com/Million191/architect-workspace1/commit/c99c885",
+        "commit_at": "2026-08-28T00:00:00.000Z",
+        "points_awarded": 24,
+        "outstanding": []
       }
     },
     {
