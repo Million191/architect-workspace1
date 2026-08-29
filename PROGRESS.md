@@ -1475,3 +1475,140 @@
     `get_meeting_summary`) and one resource + one resource template
     (`meetings://catalog`, `meetings://{meeting_id}`); no prompts yet. Not
     yet committed.
+
+- [x] Commit the meeting-assistant work, then add the server's first prompt, `meeting_recap`
+  - Date: 2026-08-29
+  - Session: CC-20260829-r4kx
+  - What changed: Committed everything built so far in `meeting-assistant/`
+    (commit `1735c06`) — first checked `git status`, found no `.venv/` rule
+    in the root `.gitignore` (would have staged the entire virtual
+    environment), added one, then staged only the intended files by
+    explicit path (`.gitignore`, `PROGRESS.md`, and the 8 real
+    `meeting-assistant/` files) rather than `git add -A`, leaving the
+    pre-existing untracked `UXDesigner_FieldGuide.html` alone since it
+    isn't this session's work. Confirmed against `order-status-lookup/`'s
+    own git history (6 tracked files, no `.venv`) that this matches the
+    existing convention for these standalone Python MCP projects. Left the
+    commit unpushed at the user's request (`main` is 1 ahead of
+    `origin/main`).
+    Then added the server's third primitive type, a prompt:
+    `meeting_recap(meeting_id: str, owner_filter: str | None = None)`.
+    Before writing it, searched the repo for a real "tested prompt" per the
+    user's instruction to reuse existing wording rather than invent new
+    phrasing — found `prompts/meeting_prompt_1.txt.txt` and
+    `prompts/meeting_prompt_2.txt.txt` (confirmed byte-identical via `diff`,
+    both already tracked in git) and used that exact wording ("You are an
+    AI meeting assistant responsible for turning raw audio from virtual or
+    physical meetings into accurate transcripts, structured minutes,
+    tracked action items, and participant-specific email distribution.
+    Please summarize the key points discussed in the meeting.") as the
+    prompt's opening framing, told the user which file it came from. Read
+    the installed SDK's actual `prompt()` decorator source
+    (`mcp/server/mcpserver/server.py`) before writing anything, confirming
+    `@mcp.prompt()` takes no required arguments itself — the function's own
+    parameters become the prompt's arguments — and that the return type can
+    be plain text or a `list[Message]` for multi-turn; added a comment
+    noting the latter option per the user's explicit ask. `meeting_id` has
+    no sensible default (required); `owner_filter` defaults to `None`
+    ("every owner"), the one argument with a real default. The generated
+    text encodes the full workflow: read `meetings://{meeting_id}` for the
+    meeting's summary/topics, call `search_action_items` (with the owner
+    filter if given) and keep only items whose `meetingTitle` matches, then
+    produce a recap — with explicit instructions for both miss cases (no
+    such meeting id → say so, stop, don't fabricate; meeting exists but no
+    matching action items → say so rather than inventing any), matching the
+    project's own no-fabrication rule from the architecture doc.
+  - Verification: `uv run python -c "import server; print(server.
+    meeting_recap(...))"` confirmed the template expands correctly with
+    real arguments. A raw terminal print of the expanded text showed a
+    garbled character where the em dash should be; rather than assume it
+    was fine, read the file's raw bytes directly and confirmed
+    `\xe2\x80\x94` (a correct UTF-8 em dash) — the garbling was this
+    terminal's console codepage mangling `print()` output, not real
+    corruption in `server.py` (worth checking explicitly given this
+    project's own 2026-08-17 entry describes a real instance of exactly
+    this class of encoding bug). Then verified live through the Inspector:
+    the `Prompts` tab listed `meeting_recap`, and rendering it caught a
+    genuine user-input typo on the first two attempts (`meeting_id` typed
+    with a double dash, `mtg-2026-08--19-acme-onboarding`, not a real id) —
+    flagged plainly rather than treated as a pass, walked the user through
+    retyping it, and the corrected render matched the direct-Python
+    expansion exactly: correct resource URI, `owner="Priya"` carried
+    through to step 2, tested wording and the no-fabrication instructions
+    all intact.
+  - Notes: Server now has all three MCP primitive types — two tools, one
+    resource + template, one prompt — every one verified live through the
+    Inspector, not just in isolated Python calls. This new prompt work is
+    not yet committed (the commit above only covers what existed before
+    this entry); committing it is the natural next step if the user asks.
+
+- [x] STORY-012 — Implement mandatory review gate before email drafting
+  - Date: 2026-08-29
+  - Session: CC-20260829-p8w3
+  - What changed: Added `backend/src/services/reviewGate/` — Gate #1 from
+    `project-blueprint/meeting-assistant-architecture.md` ("no AI/LLM step is
+    allowed to run past Gate #1 ... unsupervised"), built as a paced,
+    one-step-at-a-time session per the story brief. `types.ts` defines
+    `DraftMinutes` (an aggregate of the already-built `MeetingSummary` +
+    `DiscussionTopic[]` + `Decision[]` + `ActionItem[]` from STORY-008/009/
+    010/011, not re-derived), `ReviewGateStatus` (`pending_review` |
+    `approved` — deliberately no separate "revision requested" state, since
+    the acceptance criteria describe receiving edits and re-presenting the
+    draft as one action), `ReviewGateSession`, and `RevisionRecord` for
+    audit history. `errors.ts` adds `ContractViolationError`,
+    `SessionNotFoundError`, `SessionAlreadyApprovedError`, and
+    `ReviewNotApprovedError`. `auditLog.ts` mirrors every other service's
+    `recordAuditEvent()`, tagged `service: 'reviewGate'`.
+    `reviewGateService.ts` implements four functions: `submitForReview`
+    (opens a session, idempotent on `transcriptId` while pending, rejects
+    resubmission after approval rather than silently reopening the gate),
+    `requestRevision` (validates the revised draft matches the session's
+    transcript, records a `RevisionRecord`, and puts the session straight
+    back into `pending_review`), `approve` (records who approved and when;
+    rejects a second approval), and `assertApprovedForEmailDrafting` — the
+    actual seam STORY-013 (email drafting, not built yet, per the brief's
+    "leave room, don't build it now") must call before running; it throws
+    unless an explicit `approve()` already happened, making "failure to
+    wait for approval" structurally impossible rather than merely
+    documented. Sessions live in an in-memory `Map`, same
+    `TODO(pre-persistence)` convention every other service in this project
+    already carries. No HTTP route added, matching the service-layer-only
+    convention established since STORY-005.
+  - Verification: `tsc --noEmit` clean across the backend. `npx jest`:
+    206/206 passing across 23 suites (up from 188/22 before this story — 18
+    new tests in `reviewGateService.test.ts`), covering all three
+    acceptance criteria directly: (1) happy path — draft minutes submitted
+    reach `pending_review` and require an explicit `approve()` before
+    `assertApprovedForEmailDrafting` will return normally; (2) requested
+    edits — `requestRevision` swaps in the revised draft, appends to
+    `revisions`, and returns the session to `pending_review`, with separate
+    tests for a revision against the wrong transcript id and a revision
+    attempted on an already-approved session; (3) Trust — a real
+    (non-mocked) `console.log`/`console.error` spy test asserts a
+    `review_submitted` and a `review_approved` entry, plus a blocked
+    `gate_check_blocked` entry (`outcome: 'failure'`,
+    `error_class: 'SessionNotFoundError'`) for a gate-check against a
+    session that was never submitted — all with distinct `auditEventId`s.
+    The three named failure paths are each covered directly: "failure to
+    wait for approval" (`ReviewNotApprovedError` on a still-pending session,
+    `SessionNotFoundError` on one never submitted), "incorrect handling of
+    requested edits" (wrong-transcript revision, empty `changesRequested`,
+    revision on an approved session all rejected), and "review gate logic
+    failure" (double-approve, approve/revise on a nonexistent session,
+    missing `approvedBy`, resubmitting an approved session all rejected
+    with typed errors, none silently swallowed).
+  - Notes: Confidence 85%. This is a genuine walking skeleton for Gate #1:
+    the mechanism is real and fully tested, but nothing calls it yet — 
+    STORY-013 (email drafting) doesn't exist, so `assertApprovedForEmailDrafting`
+    is a seam with no caller in production code, only in tests. What would
+    raise confidence: seeing STORY-013 actually call this function and a
+    test proving it refuses to draft an email when the gate throws. Also
+    flagged directly to the user this session: the task brief's "workspace
+    repo not provisioned yet" framing didn't match reality — this repo
+    already has 9 built-out backend services through STORY-019 — so this
+    story was built against the real, existing `backend/` codebase and its
+    established per-service pattern (`types.ts`/`errors.ts`/`auditLog.ts`/
+    `<name>Service.ts`) rather than a fresh scaffold. Two pre-existing
+    uncommitted files (`meeting-assistant/server.py`,
+    `UXDesigner_FieldGuide.html`) were left untouched — not part of this
+    story.
