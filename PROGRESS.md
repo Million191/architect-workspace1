@@ -1244,3 +1244,55 @@
     matches what PMs actually expect in the minutes table. Not yet
     committed — commit is the next step, with a message naming
     STORY-011.
+
+- [x] STORY-019 — Propose next meeting date/time and carry over open items
+  - Date: 2026-08-29
+  - Session: CC-20260829-m3vq
+  - What changed: Added `backend/src/services/nextMeetingProposal/`
+    (`types.ts`, `errors.ts`, `auditLog.ts`,
+    `nextMeetingProposalService.ts`) implementing REQ-012. Before writing
+    code, found and flagged a genuine conflict between two authoritative
+    sources for this story: REQ-012's literal wording and `plan.json`'s
+    stored acceptance say to propose a next-meeting date/time only when
+    one is mentioned in the transcript, with open-item carry-over as a
+    separate always-on behavior for recurring meetings; this task's brief
+    and `progress.json`'s tracked criteria instead say to propose
+    whenever the concluded meeting has open items, with no
+    transcript-mention condition at all. These don't reconcile as one
+    rule. Asked the user; they chose the open-items-driven rule, which is
+    what's built. `progress.json`'s STORY-019 block already matched that
+    rule; `plan.json`'s stored acceptance text was left untouched (not
+    confirmed as this repo's file to edit) — worth reconciling later if
+    the portal treats `plan.json` as authoritative. "Open item" reuses
+    `actionItemExtraction`'s `ActionItem` type; an item counts as open
+    unless `status` is exactly `'done'` (a missing status — STORY-011's
+    own "flagged for review" case — is treated as still open, not assumed
+    done). The proposed date/time is a documented placeholder heuristic
+    (`concludedAt + 7 days`) — a real scheduling algorithm would need a
+    calendar integration, an external dependency outside this story's
+    scope. Unlike STORY-005/006/009/010/011, no injectable provider seam
+    was needed: the decision is pure, deterministic logic over data the
+    caller already has, so the only failure path is malformed input
+    (`ContractViolationError`), same scope call STORY-007's
+    `segmentMarkingService` made for skipping `withTimeoutAndRetry`.
+    Every attempt, dedup hit, proposal, and no-proposal decision writes
+    an audit event.
+  - Verification: `tsc --noEmit` clean across the backend. `npx jest`:
+    188/188 passing across 22 suites (up from 179/21 before this story —
+    9 new tests in `nextMeetingProposalService.test.ts`: happy path
+    proposing one week out and carrying items over, no-open-items path
+    proposing nothing, an item with no status still counting as open, a
+    `'done'` item excluded from carry-over, `ContractViolationError` on a
+    missing `meetingId`/unparseable `concludedAt`/an item missing `task`
+    text, idempotency on repeat `meetingId`, and an audit-trail trust
+    test using real `console.log`/`console.error` spies asserting
+    distinct `auditEventId`s and that `proposedDateTime`/`carriedOverItems`
+    land in the log context).
+  - Notes: Confidence 80%. Both acceptance-criteria directions and the
+    Trust criterion pass exactly as tracked in `progress.json`. What
+    would raise confidence: product confirmation that `plan.json`'s
+    divergent acceptance text for this story should be updated to match
+    (rather than the two files quietly disagreeing going forward), and
+    real usage data on whether "+7 days" is a sensible default interval
+    versus something meeting-cadence-aware. Not yet committed — commit is
+    the next step, with a message naming STORY-019.
