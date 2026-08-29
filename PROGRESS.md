@@ -1296,3 +1296,182 @@
     real usage data on whether "+7 days" is a sensible default interval
     versus something meeting-cadence-aware. Not yet committed — commit is
     the next step, with a message naming STORY-019.
+
+- [x] Scaffold the `meeting-assistant` MCP server and add its first tool, `search_action_items`
+  - Date: 2026-08-29
+  - Session: CC-20260829-r4kx
+  - What changed: Catch-up entry — this work was done across two sessions
+    (toolchain check + scaffold on 2026-08-27, the tool on 2026-08-29)
+    without a PROGRESS.md entry along the way; logging it now per the
+    catch-up rule. Verified the local toolchain (Python 3.14.6, Node
+    v24.19.0, uv 0.12.5 — all already present, nothing installed). Scaffolded
+    a new uv-managed project at `meeting-assistant/` (separate from the
+    Node/TS `backend/` — this is a standalone Python MCP server) with
+    `mcp[cli]>=2.1.0`. The installed SDK (v2.1.1) has fully renamed
+    `FastMCP` → `MCPServer` with no back-compat alias, so `server.py` uses
+    `MCPServer("meeting-assistant")` on the stdio transport, matching the
+    same SDK version already in use by the pre-existing
+    `order-status-lookup/` sibling project. Removed a stale
+    `[project.scripts]` entry `uv init` left pointing at a deleted `src/`
+    package, and set `[tool.uv] package = false` since this is a script,
+    not a distributable package (the same latent defect is still present,
+    untouched, in `order-status-lookup/pyproject.toml`). Added
+    `meeting-assistant/uv.toml` (`system-certs = true`) to work around this
+    machine's TLS-interception breaking `uv`'s PyPI fetches — same root
+    cause as the 2026-08-09 git-push cert fix, this time for `uv`. Verified
+    the bare server boots clean (no output/traceback) and connects via the
+    MCP Inspector (`uv run mcp dev server.py`); one snag along the way — a
+    stray Inspector `node.exe` from an earlier run had squatted on port
+    6274, causing `PORT IS IN USE` on relaunch, found via
+    `Get-NetTCPConnection`/`Stop-Process` and cleared.
+    Added the server's first tool, `search_action_items` (`owner:
+    str|None` [min_length=1, max_length=100], `status:
+    Literal["open","in_progress","done"]|None`, `limit: int` [ge=1, le=20,
+    default=5]), matching the real `ActionItem` contract already defined
+    in `backend/src/services/actionItemExtraction/types.ts` (STORY-011)
+    rather than the architecture doc's aspirational Stale/Carried-over
+    status language, which isn't implemented in code. That backend service
+    has no queryable/persisted data (in-memory `Map` only, no extraction
+    provider wired), so — per explicit instruction — generated a small
+    realistic sample dataset at `meeting-assistant/data/action_items.json`
+    (8 action items across 4 meetings drawn from this project's own
+    storyline: the STORY-018 audit-trail task, the Acme Corp onboarding/
+    check-in thread, STORY-004/006 references) for the tool to read from.
+    Returns a structured dict (`count` + `items`, never a formatted
+    paragraph) and a structured empty result with a `message` on a miss,
+    rather than raising.
+  - Verification: `uv run python -c "import server; ..."` confirmed the
+    module imports cleanly and the tool is directly callable:
+    `owner="Priya"` returns `count: 3` with the 3 expected items;
+    `owner="Praya"` (a deliberate misspelling — raised after the user
+    pasted a result that couldn't have come from that input) correctly
+    returns `count: 0` with the empty-result message, confirming the
+    substring-match filter behaves as coded, not as mis-typed into the
+    Inspector's UI. Also verified live through the MCP Inspector: the tool
+    appears in the Tools list after reconnecting, and calling it with
+    `owner: "Priya"` via the Inspector's generated form logged
+    `TOOLS/CALL` in the protocol pane with status `OK` and the exact
+    expected JSON.
+  - Notes: Bare server plus this one tool — no resources or prompts yet,
+    per explicit instruction. A "primitive map" the user referenced as
+    "agreed earlier in this session" was not actually present in this
+    session's context (not in conversation history, not in memory, not in
+    `project-blueprint/meeting-assistant-architecture.md`); flagged this
+    directly rather than guessing, and had the user pick from candidate
+    tools grounded in the real architecture doc — they chose
+    `search_action_items`. Not yet committed.
+
+- [x] Verify `search_action_items` live via the MCP Inspector (CP1 gate) and add a second tool, `get_meeting_summary`
+  - Date: 2026-08-29
+  - Session: CC-20260829-r4kx
+  - What changed: Relaunched the MCP Inspector against `meeting-assistant/server.py`
+    after a stray `node.exe` from an earlier run was found squatting on port 6274
+    (`Get-NetTCPConnection`/`Stop-Process`, same pattern as before) and walked the
+    user through the CP1 gate hands-on rather than clicking through it myself: which
+    tab to open, what the tool should be listed as, and where the input schema
+    (owner min/max length, status enum dropdown, limit number spinner) should show up
+    in the generated form. The user reported one real anomaly along the way — the
+    tool's description rendered as just "why." (the literal last word of the
+    docstring) instead of the full approved text — flagged as a genuine Inspector
+    rendering discrepancy rather than agreed with; it did not reproduce on the next
+    screenshot, left open as something to watch for rather than chased down further
+    tonight. Confirmed both the happy path (`owner: "Marcus"` → 3 correct, structured
+    results including the one item with `dueDate`/`priority` null and
+    `flaggedForReview: true`) and the CP1 boundary (`owner: ""`, an explicit empty
+    string) live in the browser: Pydantic rejected it with `string_too_short` before
+    the function body ran, traced to the `min_length=1` constraint on `owner`,
+    confirming the schema-validation layer — not a try/except in the tool body — is
+    what enforces that boundary.
+    Then added a second tool, `get_meeting_summary(meeting_id: str, min_length=1,
+    max_length=100)`, matching the real `MeetingSummary`
+    (`backend/src/services/meetingSummary/types.ts` — title/date/time/format/
+    platformOrLocation/attendees/objective/`missingFields`) and `DiscussionTopic`
+    (`backend/src/services/discussionSummary/types.ts` — topic/summary/
+    `flaggedForReview`) contracts, both real backend services with no persisted or
+    queryable data (same in-memory-only situation `search_action_items` hit).
+    Generated `meeting-assistant/data/meeting_summaries.json`, deliberately reusing
+    the same 4 meeting ids already in `action_items.json` (`mtg-2026-08-11-roadmap`,
+    `mtg-2026-08-19-acme-onboarding`, `mtg-2026-08-22-eng-standup`,
+    `mtg-2026-08-25-acme-checkin`) so the two sample datasets describe one consistent
+    set of meetings rather than disjointed fake data; two entries deliberately carry
+    non-empty `missingFields` (one missing `time`/`objective`, one missing
+    `platformOrLocation`) to exercise that field honestly, matching the real type's
+    "flagged, not guessed" contract. Unlike `search_action_items` (a multi-field
+    filter search), this tool is a single-id direct lookup — one required parameter,
+    no default — returning `found: true` + the summary, or `found: false` + a
+    `message` on a miss, never raising for a normal no-match.
+  - Verification: `uv run python -c "import server; ..."` confirmed
+    `get_meeting_summary(meeting_id="mtg-2026-08-19-acme-onboarding")` returns the
+    exact expected summary (including both `missingFields` and the one
+    `flaggedForReview: true` topic), and `meeting_id="mtg-does-not-exist"` returns
+    `found: false` with a clear message rather than raising. Not yet re-verified live
+    through the Inspector — that's the next step in the conversation, not done as of
+    this entry.
+  - Notes: Two tools now (`search_action_items`, `get_meeting_summary`), still no
+    resources or prompts. Not yet committed.
+
+- [x] Verify `get_meeting_summary` live via the Inspector, then add the server's first resource + resource template
+  - Date: 2026-08-29
+  - Session: CC-20260829-r4kx
+  - What changed: Reconnected the Inspector after editing `server.py` (same
+    respawn-on-reconnect pattern as the first tool) and walked the user
+    through the CP1 gate for `get_meeting_summary`: both tools listed
+    correctly, the input schema showed `Meeting Id` as required (red `*`,
+    `Execute Tool` disabled until filled — confirming the SDK correctly
+    marked it non-optional, unlike the all-optional `search_action_items`
+    params), and — notably — the tool's full docstring rendered correctly
+    this time, with no repeat of the earlier "why."-truncation glitch, so
+    that appears to have been transient rather than a real bug. Verified the
+    happy path (`meeting_id: "mtg-2026-08-25-acme-checkin"` → exact expected
+    JSON) and the miss path live: a well-formed but non-existent id returned
+    a clean `status: OK` with `{"found": false, "message": "..."}` — no
+    error banner — explicitly contrasted against the schema-violation error
+    seen in the previous session's `owner: ""` test, to make the point that
+    a valid-input miss and an invalid-input rejection are different failure
+    classes handled at different layers (tool body vs. Pydantic schema).
+    Then added the server's first resource plus its first resource
+    template, since a plain tool wasn't what was asked for this time. Before
+    writing anything, read the installed SDK's actual source
+    (`mcp/server/mcpserver/server.py`'s `resource()` decorator and
+    `mcp/server/mcpserver/exceptions.py`) rather than assuming API shape —
+    confirmed `@mcp.resource(uri, mime_type=...)`, that a `{param}` in the
+    URI auto-registers a template whose function parameter must match the
+    `{param}` name exactly, and that the idiomatic miss-handling for a
+    resource is to raise `ResourceNotFoundError` (a real `-32602`
+    protocol-level error), deliberately different from how the tools handle
+    a miss (a structured `found: false`/`count: 0` return) — resources are
+    addressed by URI, so a URI that doesn't resolve is a 404-style protocol
+    error, not a semantically-empty success. Added `meetings://catalog`
+    (static resource, `list_meetings_catalog()`, `mime_type=
+    "application/json"`, a lightweight index of all 4 meetings — id, title,
+    date, format) and `meetings://{meeting_id}` (template,
+    `get_meeting_resource(meeting_id)`, same MIME type, full summary for one
+    meeting, raising `ResourceNotFoundError` on a miss). Both read-only —
+    each only opens `data/meeting_summaries.json`, no writes, no mutation, so
+    neither should have been a tool. The `meetings://` scheme names the
+    actual domain (meeting records), matching the `docs://`/`crm://`-style
+    convention the user specified.
+  - Verification: `uv run python -c "import server; ..."` confirmed all
+    three behaviors directly: the catalog returns all 4 meetings with the
+    right fields; `get_meeting_resource("mtg-2026-08-22-eng-standup")`
+    returns the exact full summary; `get_meeting_resource("mtg-does-not-
+    exist")` raises `ResourceNotFoundError` rather than returning a value.
+    Also called `await server.mcp.list_resources()` /
+    `list_resource_templates()` directly to confirm the SDK registered the
+    URI and `mime_type` exactly as intended on both. Then verified live
+    through the Inspector: `meetings://catalog` read back the 4-meeting
+    index with `application/json` shown as its MIME type in the UI; the
+    left panel correctly split the two into separate **URIs (1)** /
+    **Templates (1)** sections, itself confirming the SDK registered them as
+    the two different primitive kinds intended; `get_meeting_resource`
+    resolved `{meeting_id}` correctly for a real id
+    (`mtg-2026-08-19-acme-onboarding`) and returned the exact expected JSON;
+    and the miss case (`mtg-does-not-exist`) surfaced as a red "Read Error:
+    No meeting found with id 'mtg-does-not-exist'." in the Inspector — a
+    protocol-level read failure, not a JSON body, confirming the
+    `ResourceNotFoundError` design decision behaves correctly end-to-end,
+    not just in isolated Python calls.
+  - Notes: Server now has two tools (`search_action_items`,
+    `get_meeting_summary`) and one resource + one resource template
+    (`meetings://catalog`, `meetings://{meeting_id}`); no prompts yet. Not
+    yet committed.

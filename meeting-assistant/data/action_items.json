@@ -1,0 +1,98 @@
+[
+  {
+    "meetingId": "mtg-2026-08-11-roadmap",
+    "meetingTitle": "Q3 Roadmap Sync",
+    "meetingDate": "2026-08-11",
+    "task": "Draft the STORY-018 audit trail schema for review",
+    "owner": "Priya Nair",
+    "dueDate": "2026-08-18",
+    "priority": "high",
+    "status": "done",
+    "sourceTimestampMs": 412000,
+    "flaggedForReview": false
+  },
+  {
+    "meetingId": "mtg-2026-08-11-roadmap",
+    "meetingTitle": "Q3 Roadmap Sync",
+    "meetingDate": "2026-08-11",
+    "task": "Confirm Acme Corp's diarization accuracy requirement before STORY-006 estimate",
+    "owner": "Marcus Webb",
+    "dueDate": "2026-08-15",
+    "priority": "medium",
+    "status": "in_progress",
+    "sourceTimestampMs": 587500,
+    "flaggedForReview": false
+  },
+  {
+    "meetingId": "mtg-2026-08-19-acme-onboarding",
+    "meetingTitle": "Client Onboarding Call — Acme Corp",
+    "meetingDate": "2026-08-19",
+    "task": "Send Acme the attendee-list template so speaker mapping can resolve names",
+    "owner": "Priya Nair",
+    "dueDate": "2026-08-21",
+    "priority": "medium",
+    "status": "open",
+    "sourceTimestampMs": 96000,
+    "flaggedForReview": false
+  },
+  {
+    "meetingId": "mtg-2026-08-19-acme-onboarding",
+    "meetingTitle": "Client Onboarding Call — Acme Corp",
+    "meetingDate": "2026-08-19",
+    "task": "Loop in legal on the recording-consent language for room-mic capture",
+    "owner": "Marcus Webb",
+    "dueDate": null,
+    "priority": null,
+    "status": "open",
+    "sourceTimestampMs": 214000,
+    "flaggedForReview": true
+  },
+  {
+    "meetingId": "mtg-2026-08-22-eng-standup",
+    "meetingTitle": "Engineering Weekly Standup",
+    "meetingDate": "2026-08-22",
+    "task": "Fix the STORY-004 tagging regression flagged in nightly build",
+    "owner": "Diego Fuentes",
+    "dueDate": "2026-08-24",
+    "priority": "high",
+    "status": "done",
+    "sourceTimestampMs": 33000,
+    "flaggedForReview": false
+  },
+  {
+    "meetingId": "mtg-2026-08-22-eng-standup",
+    "meetingTitle": "Engineering Weekly Standup",
+    "meetingDate": "2026-08-22",
+    "task": "Investigate the noisy-audio confidence flag on the room-mic ingestion path",
+    "owner": "Priya Nair",
+    "dueDate": "2026-08-29",
+    "priority": "medium",
+    "status": "open",
+    "sourceTimestampMs": 178000,
+    "flaggedForReview": false
+  },
+  {
+    "meetingId": "mtg-2026-08-25-acme-checkin",
+    "meetingTitle": "Acme Corp Bi-Weekly Check-in",
+    "meetingDate": "2026-08-25",
+    "task": "Share the draft minutes approval-dashboard mockup with Acme's PM",
+    "owner": "Marcus Webb",
+    "dueDate": "2026-08-27",
+    "priority": "low",
+    "status": "in_progress",
+    "sourceTimestampMs": 305000,
+    "flaggedForReview": false
+  },
+  {
+    "meetingId": "mtg-2026-08-25-acme-checkin",
+    "meetingTitle": "Acme Corp Bi-Weekly Check-in",
+    "meetingDate": "2026-08-25",
+    "task": "Re-send the Gate #2 email approval that bounced last week",
+    "owner": "Diego Fuentes",
+    "dueDate": "2026-08-26",
+    "priority": "high",
+    "status": "open",
+    "sourceTimestampMs": 452000,
+    "flaggedForReview": false
+  }
+]

@@ -1,0 +1,15 @@
+[project]
+name = "meeting-assistant"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Million", email = "millionabate19@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "mcp[cli]>=2.1.0",
+]
+
+[tool.uv]
+package = false

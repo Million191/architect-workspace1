@@ -1,0 +1,94 @@
+[
+  {
+    "meetingId": "mtg-2026-08-11-roadmap",
+    "title": "Q3 Roadmap Sync",
+    "date": "2026-08-11",
+    "time": "10:00",
+    "format": "Virtual",
+    "platformOrLocation": "Zoom",
+    "attendees": ["Priya Nair", "Marcus Webb", "Diego Fuentes"],
+    "objective": "Align Q3 roadmap priorities and estimate the STORY-006 diarization work.",
+    "missingFields": [],
+    "topics": [
+      {
+        "topic": "STORY-018 audit trail schema",
+        "summary": "Reviewed the proposed audit trail schema; agreed to add a unique event ID per entry.",
+        "flaggedForReview": false
+      },
+      {
+        "topic": "Acme diarization accuracy requirement",
+        "summary": "Discussed accuracy requirements ahead of the STORY-006 estimate; action item assigned to confirm with Acme.",
+        "flaggedForReview": false
+      }
+    ]
+  },
+  {
+    "meetingId": "mtg-2026-08-19-acme-onboarding",
+    "title": "Client Onboarding Call — Acme Corp",
+    "date": "2026-08-19",
+    "time": null,
+    "format": "Virtual",
+    "platformOrLocation": "Teams",
+    "attendees": ["Priya Nair", "Marcus Webb"],
+    "objective": null,
+    "missingFields": ["time", "objective"],
+    "topics": [
+      {
+        "topic": "Attendee list and speaker mapping",
+        "summary": "Requested Acme's attendee list to enable accurate speaker mapping.",
+        "flaggedForReview": false
+      },
+      {
+        "topic": "Recording consent for room-mic capture",
+        "summary": "Raised a legal question about consent language for physical-room capture; unresolved, flagged for legal follow-up.",
+        "flaggedForReview": true
+      }
+    ]
+  },
+  {
+    "meetingId": "mtg-2026-08-22-eng-standup",
+    "title": "Engineering Weekly Standup",
+    "date": "2026-08-22",
+    "time": "09:30",
+    "format": "In-Person",
+    "platformOrLocation": "Conference Room A",
+    "attendees": ["Priya Nair", "Marcus Webb", "Diego Fuentes"],
+    "objective": "Weekly engineering sync on open stories and regressions.",
+    "missingFields": [],
+    "topics": [
+      {
+        "topic": "STORY-004 tagging regression",
+        "summary": "Diego identified and fixed a tagging regression caught in the nightly build.",
+        "flaggedForReview": false
+      },
+      {
+        "topic": "Room-mic noisy-audio confidence flag",
+        "summary": "Priya to investigate why the noisy-audio confidence flag fires inconsistently on room-mic ingestion.",
+        "flaggedForReview": false
+      }
+    ]
+  },
+  {
+    "meetingId": "mtg-2026-08-25-acme-checkin",
+    "title": "Acme Corp Bi-Weekly Check-in",
+    "date": "2026-08-25",
+    "time": "13:00",
+    "format": "Virtual",
+    "platformOrLocation": null,
+    "attendees": ["Marcus Webb", "Diego Fuentes"],
+    "objective": "Bi-weekly status check-in with Acme's PM.",
+    "missingFields": ["platformOrLocation"],
+    "topics": [
+      {
+        "topic": "Approval dashboard mockup",
+        "summary": "Shared the draft minutes approval-dashboard mockup for early feedback.",
+        "flaggedForReview": false
+      },
+      {
+        "topic": "Bounced Gate #2 approval email",
+        "summary": "Acme's PM reported the last Gate #2 approval email bounced; re-send needed.",
+        "flaggedForReview": false
+      }
+    ]
+  }
+]
