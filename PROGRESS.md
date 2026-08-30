@@ -1685,3 +1685,61 @@
     criteria, but a real "review the draft email" UI (Gate #2, STORY-014)
     will likely want a richer body shape than one flat string; not built
     here since the brief said to leave STORY-014 room, not build it.
+
+## 2026-08-29 (3)
+
+- [x] STORY-014: implement mandatory review gate before email sending
+  - Date: 2026-08-29
+  - Session: CC-20260829-n5xh
+  - What changed: Added `backend/src/services/reviewGateSending/` — Gate #2
+    from the architecture doc, mirroring Gate #1's shape 1:1 but keyed on
+    `EmailDraftBatch` (STORY-013's output) instead of `DraftMinutes`.
+    `types.ts` (`SendingReviewGateSession`, keyed on `EmailDraftBatch.id`,
+    which is itself `== reviewGateSessionId` — confirmed against
+    `emailDraftingService.ts:142,144`), `errors.ts` (`ContractViolationError`,
+    `SessionNotFoundError`, `SessionAlreadyApprovedError`, and
+    `SendingNotApprovedError` in place of Gate #1's `ReviewNotApprovedError`),
+    `auditLog.ts` (`service: 'reviewGateSending'`, same structured-event
+    shape as Gate #1's), and `reviewGateSendingService.ts` implementing
+    `submitForReview`, `requestRevision`, `approve`, and the key seam
+    `assertApprovedForSending` — the function a future Email Delivery
+    Service (not built here; out of scope per the architecture doc, same
+    way STORY-012 didn't build email drafting itself) must call before
+    dispatching any mail, and which throws unless an explicit approval is
+    on record. `requestRevision` applies a caller-supplied `revisedBatch`
+    and moves the session straight back to `pending_review` in one action
+    (no separate "revision requested" state), matching the story's
+    "revise and re-present" acceptance criterion and Gate #1's precedent.
+    `validateBatch` additionally rejects a batch with zero emails
+    (boundary case — nothing to send for review).
+  - Verification: `tsc --noEmit` clean. 19/19 new tests passing
+    (`reviewGateSendingService.test.ts`), 234/234 total across 25 suites
+    (was 215/215 before this story). Tests cover: happy path (submit →
+    revise → re-present → approve), idempotency (re-submitting the same
+    batch id while pending is a no-op; re-submitting after approval is
+    rejected, not reopened), and all three story failure paths — "failure
+    to wait for approval" (`assertApprovedForSending` throws
+    `SendingNotApprovedError` while pending, `SessionNotFoundError` when
+    never submitted), "incorrect handling of requested adjustments" (a
+    revised batch for the wrong session throws `ContractViolationError`
+    rather than silently attaching to the wrong session), and "review gate
+    logic failure" (malformed input, missing session, already-approved
+    session all fail loud on submit/revise/approve). The Trust criterion
+    (logs review gate interactions and approvals) is verified directly:
+    a test asserts `sending_review_submitted`, `sending_review_approved`,
+    and a blocked `sending_gate_check_blocked` entry all appear in the
+    audit trail with distinct `auditEventId`s and the correct
+    `error_class`.
+  - Notes: Confidence 90%. Scope was deliberately limited to the gate
+    itself, not the not-yet-specified Email Delivery Service that will
+    call `assertApprovedForSending` — matching STORY-012's precedent and
+    the "leave room for it, do not build it now" instruction for
+    STORY-015/016. What would raise confidence: a real caller (the
+    delivery service, once specified) exercising `assertApprovedForSending`
+    end-to-end against a live batch, and a decision on whether
+    `requestRevision`'s caller-supplied `revisedBatch` should instead be
+    produced by re-invoking `emailDrafting`'s `draftEmails()` internally —
+    kept as caller-supplied here to match Gate #1's existing
+    `requestRevision(revisedDraft)` convention exactly, but the
+    architecture doc's "Gate #2 no → EmailDraft" arrow could also be read
+    as this service owning that call itself.
