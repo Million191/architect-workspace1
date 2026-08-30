@@ -1743,3 +1743,84 @@
     `requestRevision(revisedDraft)` convention exactly, but the
     architecture doc's "Gate #2 no → EmailDraft" arrow could also be read
     as this service owning that call itself.
+
+- [x] STORY-015 — Log action items to tracker after email send confirmation
+  - Date: 2026-08-29
+  - Session: CC-20260829-j2vd
+  - What changed: Added `backend/src/services/actionItemTracker/` (`types.ts`,
+    `errors.ts`, `auditLog.ts`, `actionItemTrackerService.ts`), implementing
+    the architecture doc's "Action Item Tracker" component (REQ-016). Built
+    as a paced, one-step-at-a-time session per the story brief. Since the
+    Email Delivery Service the architecture doc's "send confirmation" arrow
+    comes from doesn't exist yet (out of scope, per STORY-014's own notes),
+    `logActionItems()` accepts a caller-supplied `EmailSendConfirmation`
+    (`sendingReviewGateSessionId`, `sentAt`, `confirmedRecipients`) and
+    trusts nothing about "the emails were sent" beyond what Gate #2 itself
+    already proved: it calls STORY-014's `assertApprovedForSending` first,
+    and wraps whatever that throws (`SessionNotFoundError`/
+    `SendingNotApprovedError`) into `SendConfirmationNotVerifiedError` rather
+    than logging anyway — the same "reuse the existing gate as the trust
+    boundary" pattern STORY-013 set for Gate #1. Every action item in the
+    approved `EmailDraftBatch` is logged, not just the ones that reached a
+    real attendee: both `email.actionItems` across every drafted email and
+    `batch.unmatchedActionItems` are collected, each stamped
+    `status: 'Not Started'` (a tracker-specific vocabulary, deliberately
+    distinct from `ActionItem.status`, matching the architecture doc's
+    "Not Started / Stale / Carried-over" language — this story only ever
+    produces `'Not Started'`; the other two are STORY-016's concern, left
+    untouched). Writes go through an injectable `ActionItemTrackerClient`
+    provider seam (no real tracker — Jira/Asana/a DB — wired in yet, the
+    same external-dependency governance boundary STORY-005/006/009/010/011
+    drew for their own provider seams) wrapped in `withTimeoutAndRetry`
+    (reused read-only from `audioIngestion`). One deliberate deviation from
+    every prior provider-seam story: those all restrict retries to
+    `UpstreamTimeoutError` via a custom `isRetryable`; this service uses
+    `withTimeoutAndRetry`'s default retry-everything policy instead, since
+    the acceptance criterion is "a logging failure ... should retry," not
+    "a hung logging call should retry" — caught by re-reading the criterion
+    against the copy-pasted precedent before writing tests, not after.
+    On exhausted retries, an injectable `notifyUserOfFailure` hook fires
+    before `ActionItemLoggingFailedError` is thrown — defaulted to a
+    structured `user_notified_of_logging_failure` audit event, flagged
+    honestly as a walking-skeleton stand-in since no real notification
+    channel (email, in-app alert) exists in this project yet, same class of
+    scope boundary as the tracker client itself. Dedupes on
+    `confirmation.sendingReviewGateSessionId`. No HTTP route added, matching
+    the service-layer-only convention established since STORY-005.
+  - Verification: `tsc --noEmit` clean across the backend. `npx jest`:
+    243/243 passing across 26 suites (up from 234/25 before this story — 9
+    new tests in `actionItemTrackerService.test.ts`), covering all three
+    acceptance criteria directly: (1) happy path — every action item from an
+    approved batch (both per-participant and unmatched) is logged with
+    `status: 'Not Started'`; (2) logging failure — one test proves a retry
+    actually happens (client fails once, succeeds on attempt 2, result still
+    returns correctly), a second proves exhausted retries throw
+    `ActionItemLoggingFailedError` and call `notifyUserOfFailure` exactly
+    once; (3) Trust — a real (non-mocked) `console.log`/`console.error` spy
+    test asserts `action_item_logging_attempted` →
+    `action_items_logged` on a success run and
+    `action_item_logging_failed` (`outcome: 'failure'`,
+    `error_class: 'ActionItemLoggingFailedError'`) →
+    `user_notified_of_logging_failure` on a failing run, all with distinct
+    `auditEventId`s. The "incorrect action item logging" failure path is
+    covered at both boundaries named in the story brief: input
+    (`ContractViolationError` on a missing `sendingReviewGateSessionId` or a
+    non-array `confirmedRecipients`) and trust (`SendConfirmationNotVerifiedError`
+    on a confirmation referencing a session that was never submitted to
+    Gate #2, or one still `pending_review`).
+  - Notes: Confidence 85%. `.colaberry/progress.json` had STORY-015's three
+    criteria pre-marked `passed: true` with empty `files_touched`/
+    `tests_added` before any code for this story existed — the same
+    stale-flag pattern STORY-006/007/008/011/013 already caught and
+    corrected — flagged here rather than trusted, corrected in the
+    follow-up verification commit against the real test run above. What
+    would raise confidence: a real tracker system (Jira/Asana/a DB) wired
+    into `ActionItemTrackerClient` to prove the retry/timeout behavior
+    against an actual flaky integration rather than a synthetic
+    always-fails/always-succeeds fake, and product input on whether logging
+    should filter out items already `flaggedForReview`/missing an owner
+    (currently logged as-is, gaps and all — no item is silently dropped from
+    the tracker just because it was incomplete in the minutes). STORY-016
+    (stale/carried-over flagging) and STORY-017 (JSON export) were
+    deliberately left untouched, per the brief. Not yet committed — commit
+    is the next step, with a message naming STORY-015.
