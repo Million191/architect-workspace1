@@ -45,3 +45,14 @@ export class SendConfirmationNotVerifiedError extends ActionItemTrackerError {
 export class ActionItemLoggingFailedError extends ActionItemTrackerError {
   readonly errorClass = 'ActionItemLoggingFailedError';
 }
+
+/**
+ * STORY-016's "comparison logic failure" path: an item in `priorOpenItems`/`currentOpenItems`
+ * could not actually be compared — e.g. a `loggedAt` that isn't a valid ISO date. Rather than
+ * silently skip the item (which would risk "failure to detect a stale item") or silently treat it
+ * as current (which would risk "incorrect stale item flagging"), the whole comparison fails loud
+ * so a bad record gets fixed instead of quietly mis-flagged.
+ */
+export class StaleComparisonFailedError extends ActionItemTrackerError {
+  readonly errorClass = 'StaleComparisonFailedError';
+}

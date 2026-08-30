@@ -22,13 +22,47 @@ export interface EmailSendConfirmation {
  * One action item as it exists in the tracker: the original `ActionItem` from
  * `actionItemExtraction`, plus tracker-only fields. `status` here is deliberately a
  * tracker-specific vocabulary distinct from `ActionItem.status` (`open`/`in_progress`/`done`) — see
- * the architecture doc's "status: Not Started / Stale / Carried-over" arrow. This story only ever
- * produces `'Not Started'`; `'Stale'`/`'Carried-over'` are STORY-016's concern, not built here.
+ * the architecture doc's "status: Not Started / Stale / Carried-over" arrow. STORY-015 only ever
+ * produced `'Not Started'`; STORY-016 adds `'Stale'`. `'Carried-over'` (the next-meeting-agenda
+ * concern) is still out of scope here.
  */
 export interface TrackedActionItem {
   actionItem: ActionItem;
-  status: 'Not Started';
+  status: 'Not Started' | 'Stale';
   loggedAt: string;
+}
+
+/**
+ * Input to the stale-item comparison (REQ-017): the same action item tracked across two
+ * occurrences of a recurring meeting. `priorOpenItems` is what the tracker already had on record
+ * as open before this run; `currentOpenItems` is what's open now. Matching between the two lists
+ * is by `(actionItem.task, actionItem.owner)`, case-insensitive — the same convention
+ * `emailDraftingService` already uses for owner matching. `now` is injectable so tests don't
+ * depend on the real clock.
+ */
+export interface StaleComparisonInput {
+  priorOpenItems: TrackedActionItem[];
+  currentOpenItems: TrackedActionItem[];
+  now?: Date;
+}
+
+/** One item's outcome after comparison: whether it crossed the 2-week-open threshold, and the
+ * `loggedAt` the age was computed from (the earliest sighting across the prior/current lists when
+ * the item matched one from `priorOpenItems`, otherwise its own `loggedAt`). */
+export interface StaleComparisonResultItem {
+  actionItem: ActionItem;
+  status: 'Not Started' | 'Stale';
+  daysOpen: number;
+  firstLoggedAt: string;
+}
+
+/** Whole-comparison result. `allCurrent` is `staleCount === 0`, kept as its own field so callers
+ * (and tests) can assert the "nothing is stale" acceptance criterion directly instead of deriving
+ * it from a count. */
+export interface StaleComparisonResult {
+  items: StaleComparisonResultItem[];
+  staleCount: number;
+  allCurrent: boolean;
 }
 
 /**

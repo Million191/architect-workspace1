@@ -1824,3 +1824,64 @@
     (stale/carried-over flagging) and STORY-017 (JSON export) were
     deliberately left untouched, per the brief. Not yet committed — commit
     is the next step, with a message naming STORY-015.
+
+## 2026-08-30
+
+- [x] STORY-016 — Compare against prior open items and flag stale items
+  - Date: 2026-08-30
+  - Session: CC-20260830-t7m2
+  - What changed: Added `backend/src/services/actionItemTracker/staleItemComparison.ts`
+    implementing REQ-017. `compareOpenItems({ priorOpenItems, currentOpenItems, now })`
+    matches items across two occurrences of a recurring meeting by
+    `(actionItem.task, actionItem.owner)` case-insensitive — the same convention
+    `emailDraftingService` already uses for owner matching — and ages each current item
+    from the *earliest* `loggedAt` seen across both lists (its true first-seen date, not
+    just this run's), flagging anything open more than 14 days as `'Stale'`. `now` is
+    injectable so tests don't depend on the real clock. `TrackedActionItem.status`
+    (`types.ts`) widened from the literal `'Not Started'` to `'Not Started' | 'Stale'`,
+    with three new types added for the comparison's input/output shape
+    (`StaleComparisonInput`, `StaleComparisonResultItem`, `StaleComparisonResult`).
+    `errors.ts` gained one new class, `StaleComparisonFailedError`, for the "comparison
+    logic failure" path (an unparseable `loggedAt` on either list); malformed top-level
+    input (a non-array list) reuses the existing `ContractViolationError` rather than
+    adding a redundant class. No persistent store of "prior open items" was built —
+    the architecture doc's recurring-meeting tracking has no data layer yet in this
+    project (that's a future story, same governance boundary STORY-005/006/009/010/011/015
+    already drew for their own provider seams), so the function takes the prior list as a
+    caller-supplied input rather than querying anything itself. This deliberately does not
+    touch STORY-017 (JSON export) or STORY-018 (audio ingestion idempotency/audit), per the
+    brief's "leave room, don't build" instruction. Built one step at a time (types →
+    errors → comparison logic → audit logging → tests), confirming with the user before
+    each edit, per this session's explicit paced-co-pilot instruction.
+  - Verification: `tsc --noEmit` clean across the backend. `npx jest`: 251/251 passing
+    across 27 suites (up from 243/26 before this story — 9 new tests in
+    `staleItemComparison.test.ts` plus 1 pre-existing suite untouched), covering both
+    acceptance criteria directly: (1) a happy-path test with a matched prior+current item
+    aged past 14 days from the earlier `loggedAt` asserts `status: 'Stale'`, plus a
+    boundary test proving an item open for *exactly* 14 days is not yet stale (the
+    criterion says "more than 2 weeks"); (2) an all-current test with only recent items
+    asserts `allCurrent: true` and `staleCount: 0`. Trust is verified with a real
+    (non-mocked) `console.log`/`console.error` spy test asserting the
+    `stale_item_comparison_attempted` → `stale_items_flagged`/`all_items_current`
+    →/`stale_item_comparison_failed` sequence across a flagged run, an all-current run,
+    and a failing run, each with a distinct `auditEventId`. The three named failure paths
+    are each covered: "comparison logic failure" (an unparseable `loggedAt` on either the
+    prior or the current list throws `StaleComparisonFailedError`, verified separately for
+    each list), "failure to detect stale items" and "incorrect stale item flagging" are
+    covered together by one test proving the `(task, owner)` match key does not cross-flag
+    a same-task-different-owner item as stale off the wrong meeting's history, plus the
+    input-boundary test (`ContractViolationError` on a non-array `priorOpenItems`).
+  - Notes: Confidence 85%. Same pre-existing stale-flag pattern already caught and
+    corrected for STORY-006/007/008/011/013/015 was present again here:
+    `.colaberry/progress.json`'s STORY-016 block had all three `criteria[].passed`
+    pre-set to `true` with empty `files_touched`/`tests_added` before any code for this
+    story existed — flagged to the user at session start, now corrected in the
+    verification commit against the real test run above. What would raise confidence:
+    product input on what actually supplies `priorOpenItems` in production — this story
+    assumes a caller (a future recurring-meeting scheduler/store) hands in the prior
+    occurrence's still-open tracked items, but no such caller or persistence layer exists
+    yet, so the matching/aging logic is proven correct in isolation but not yet exercised
+    end-to-end against a real second meeting occurrence. Also worth flagging: the
+    architecture doc's `'Carried-over'` status and "carried-over agenda" output are still
+    untouched — out of scope per the brief, but the next piece of this component to build
+    once a story specifies it.
