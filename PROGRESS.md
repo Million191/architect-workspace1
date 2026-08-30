@@ -1885,3 +1885,76 @@
     architecture doc's `'Carried-over'` status and "carried-over agenda" output are still
     untouched — out of scope per the brief, but the next piece of this component to build
     once a story specifies it.
+
+- [x] STORY-017 — Output structured data in JSON format for integration
+  - Date: 2026-08-30
+  - Session: CC-20260830-f9k3
+  - What changed: Added `backend/src/services/dataExport/` (`types.ts`, `errors.ts`,
+    `auditLog.ts`, `jsonFormatter.ts`, `dataExportService.ts`), implementing REQ-018.
+    No "Meeting Records Store" aggregate exists yet in this project (the architecture
+    doc's dual text/JSON output is a cross-cutting concern with no data layer built for
+    it), so rather than invent that aggregate, `MeetingDataExportInput` is a generic,
+    all-optional-except-`meetingId` shape the caller populates from whatever structured
+    pieces of the pipeline it already has (`meetingSummary`, `decisionExtraction`,
+    `actionItemTracker` output) — nothing is fabricated or re-derived, same scope
+    boundary STORY-015/016 drew for the tracker's own persistence. Logged as an explicit
+    assumption at session start (confidence ~0.75, no governance boundary crossed).
+    `jsonFormatter.ts`'s `formatMeetingDataAsJson()` is the core of acceptance criterion
+    #1: a recursive scan rejects anything `JSON.stringify` would either throw on
+    (circular references, BigInt) or silently corrupt into invalid data (`NaN`/`Infinity`
+    silently becoming `null`) *before* serialization, then proves the result round-trips
+    through `JSON.parse` — this is the story's "incorrect JSON formatting" failure path,
+    caught loud rather than shipping corrupted numeric fields to an external tracker.
+    `dataExportService.ts`'s `exportMeetingData()` follows the exact provider-seam
+    pattern STORY-015 established: validates `meetingId` is present
+    (`ContractViolationError`), dedupes on `meetingId` via an injectable idempotency
+    store (`TODO(pre-persistence)`, same as every other provider seam in this project),
+    formats the data, then sends it through an injectable `DataOutputClient` (the
+    external-tracker integration — Jira/Asana/a webhook — undecided, no implementation
+    wired in yet, same governance boundary as `ActionItemTrackerClient`) wrapped in
+    `withTimeoutAndRetry` reused read-only from `audioIngestion`. One deliberate
+    distinction from the tracker's own retry logic: a formatting failure
+    (`InvalidJsonFormatError`) is never retried, since it's deterministic and a retry
+    would fail identically on the same data — only the output-client call itself
+    (`DataOutputFailedError`) is retried, matching the story's "data output retry
+    failure" wording specifically. On exhausted retries, an injectable
+    `notifyUserOfFailure` hook fires before `DataOutputFailedError` is thrown — same
+    structured-audit-event stand-in as STORY-015, flagged honestly as a walking-skeleton
+    placeholder since no real notification channel exists in this project yet. Built one
+    step at a time (types → errors → auditLog → jsonFormatter → service → tests),
+    confirming with the user before each file, per this session's explicit paced-co-pilot
+    instruction.
+  - Verification: `tsc --noEmit` clean across the backend. `npx jest`: 263/263 passing
+    across 29 suites (up from 251/27 before this story — 12 new tests: 5 in
+    `jsonFormatter.test.ts`, 7 in `dataExportService.test.ts`), covering all three
+    acceptance criteria directly: (1) happy path — meeting data is formatted into a
+    `{ meetingId, exportedAt, data }` JSON envelope that parses back cleanly and is
+    handed to the output client; (2) data output failure — one test proves a retry
+    actually happens (client fails once, succeeds on attempt 2), a second proves
+    exhausted retries throw `DataOutputFailedError` and call `notifyUserOfFailure`
+    exactly once; (3) Trust — a real (non-mocked) `console.log`/`console.error` spy test
+    asserts `data_export_attempted` → `data_export_completed` on a success run and
+    `data_export_failed` (`outcome: 'failure'`, `error_class: 'DataOutputFailedError'`) →
+    `user_notified_of_export_failure` on a failing run, all with distinct
+    `auditEventId`s. "Incorrect JSON formatting" is covered at three levels in
+    `jsonFormatter.test.ts` (circular reference, `NaN`, `Infinity`, each throwing
+    `InvalidJsonFormatError` before serialization) plus one test proving a shared
+    non-circular reference between two array entries is *not* mistaken for a cycle — a
+    real risk given `TrackedActionItem` entries can share an underlying `ActionItem`.
+    Also covered: input-boundary `ContractViolationError` on a missing `meetingId`, and
+    idempotency (re-exporting the same `meetingId` is a no-op, output client called
+    once).
+  - Notes: Confidence 85%. `.colaberry/progress.json`'s STORY-017 block was already
+    correctly `passed: false` with empty `files_touched`/`tests_added` at session
+    start — unlike STORY-006/007/008/011/015/016, no pre-existing stale-flag bug to
+    correct here (STORY-016's own verification commit had already reverted STORY-017's
+    flags back to `false`, per its notes). What would raise confidence: a real external
+    tracker integration (Jira/Asana/a webhook) wired into `DataOutputClient` to prove
+    the retry/timeout behavior against an actual flaky integration rather than a
+    synthetic always-fails/always-succeeds fake, and product input on exactly what
+    "meeting data" a caller is expected to assemble in production once the Records Store
+    (or an equivalent aggregation point) exists — today the shape is caller-assembled
+    from whichever of `meetingSummary`/`decisionExtraction`/`actionItemTracker` output
+    it has on hand, which is a reasonable but unconfirmed reading of an intentionally
+    generic acceptance criterion. Not yet committed — commit is the next step, with a
+    message naming STORY-017.
