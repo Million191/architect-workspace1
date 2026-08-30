@@ -672,35 +672,37 @@
       "criteria": [
         {
           "text": "Given recurring meetings, when the system compares open items, then it should flag items open for more than 2 weeks.",
-          "passed": false
+          "passed": true
         },
         {
           "text": "Given no stale items, when the system compares open items, then it should confirm all items are current.",
-          "passed": false
+          "passed": true
         },
         {
           "text": "Trust: The system logs stale item flagging attempts and results.",
-          "passed": false
+          "passed": true
         }
       ],
-      "files_touched": [],
-      "tests_added": [],
-      "notes": null,
-      "updated_at": null,
+      "files_touched": [
+        "backend/src/services/actionItemTracker/types.ts",
+        "backend/src/services/actionItemTracker/errors.ts",
+        "backend/src/services/actionItemTracker/staleItemComparison.ts"
+      ],
+      "tests_added": [
+        "backend/src/services/actionItemTracker/staleItemComparison.test.ts"
+      ],
+      "notes": "Recorded from local verification (tsc --noEmit clean; 251/251 jest tests passing across 27 suites, 9 new), not from an automated portal check. compareOpenItems() matches items across two occurrences of a recurring meeting by (task, owner) case-insensitive, ages each current item from the earliest loggedAt seen across the prior and current lists, and flags anything open more than 14 days as 'Stale'; an exactly-14-day item is verified to stay 'Not Started' since the criterion is 'more than 2 weeks'. No persistent store of prior open items exists yet in this project, so the prior list is caller-supplied rather than queried - same provider-seam governance boundary STORY-005/006/009/010/011/015 already drew. Trust criterion verified via a real console.log/console.error spy test asserting stale_item_comparison_attempted -> stale_items_flagged/all_items_current/stale_item_comparison_failed, all with distinct auditEventIds. This entry corrects a pre-existing stale flag: criteria[].passed had already been flipped to true in the uncommitted working tree at session start, before any code for this story existed - flagged to the user at session start, same pattern already caught and corrected for STORY-006/007/008/011/013/015 - now grounded in the real verification above. points_awarded assumes 8/criterion, same convention as STORY-001-015.",
+      "updated_at": "2026-08-30T15:01:11.000Z",
       "verification": {
-        "state": "in_progress",
-        "criteria_passed": 0,
+        "state": "verified",
+        "criteria_passed": 3,
         "criteria_total": 3,
-        "verified_at": null,
-        "commit_sha": null,
-        "commit_url": null,
-        "commit_at": null,
-        "points_awarded": null,
-        "outstanding": [
-          "Given recurring meetings, when the system compares open items, then it should flag items open for more than 2 weeks.",
-          "Given no stale items, when the system compares open items, then it should confirm all items are current.",
-          "Trust: The system logs stale item flagging attempts and results."
-        ]
+        "verified_at": "2026-08-30T15:01:11.000Z",
+        "commit_sha": "e757d5c",
+        "commit_url": "https://github.com/Million191/architect-workspace1/commit/e757d5c",
+        "commit_at": "2026-08-30T15:01:11.000Z",
+        "points_awarded": 24,
+        "outstanding": []
       }
     },
     {
