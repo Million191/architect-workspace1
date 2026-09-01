@@ -157,5 +157,42 @@ def get_meeting_resource(meeting_id: str) -> str:
     return json.dumps(match, indent=2)
 
 
+@mcp.prompt()
+def meeting_recap(
+    meeting_id: str,
+    owner_filter: str | None = None,
+) -> str:
+    """Recap a meeting: its summary/topics plus its action items, optionally filtered
+    to one owner. Based on the tested wording in prompts/meeting_prompt_1.txt.txt /
+    meeting_prompt_2.txt.txt (identical files, both already in the prompt library).
+
+    Multi-turn workflows can return a list of typed Message objects instead of a
+    single string — not needed here since this is one up-front instruction, not a
+    back-and-forth conversation.
+    """
+    owner_clause = (
+        f' filtered to owner="{owner_filter}"' if owner_filter else " with no owner filter (every owner)"
+    )
+
+    return f"""You are an AI meeting assistant responsible for turning raw audio from
+virtual or physical meetings into accurate transcripts, structured minutes, tracked
+action items, and participant-specific email distribution.
+
+Produce a recap for the meeting with id "{meeting_id}":
+
+1. Read the resource meetings://{meeting_id} to get this meeting's title, date,
+   format, attendees, objective, and discussion topics.
+2. Call the search_action_items tool{owner_clause} to get action items, then keep
+   only the ones whose meetingTitle matches this meeting's title.
+3. Please summarize the key points discussed in the meeting, then list the
+   decisions/topics and the matching action items with owner, due date, and status.
+4. If step 1 fails because no meeting exists with that id, say so plainly and stop —
+   do not fabricate a summary. If step 1 succeeds but no action items match this
+   meeting, say the meeting has no tracked action items rather than inventing any.
+
+Never invent attendees, topics, or action items that didn't come from the tool/resource
+calls above."""
+
+
 if __name__ == "__main__":
     mcp.run(transport="stdio")
