@@ -1958,3 +1958,284 @@
     it has on hand, which is a reasonable but unconfirmed reading of an intentionally
     generic acceptance criterion. Not yet committed — commit is the next step, with a
     message naming STORY-017.
+
+## 2026-09-03
+
+- [x] Add `assess_meeting_risk` reasoning tool to the standalone `meeting-assistant/`
+  Python MCP server
+  - Date: 2026-09-03
+  - Session: CC-20260903-9k2v
+  - What changed: Brought the pre-existing `meeting-assistant/server.py` MCP server
+    (a separate, untracked Python/`uv`/`mcp[cli]` artifact — NOT the same project as
+    the `/backend` TypeScript "Meeting Assistant" tracked in the STORY-001–018 entries
+    above; the two share a name only) up under the MCP Inspector (`uv run mcp dev
+    server.py`) as a verified baseline, then added one new tool,
+    `assess_meeting_risk(meeting_id)`. Unlike the three existing lookup tools
+    (`search_action_items`, `get_meeting_summary`, `read_meeting_attachment`), this one
+    requires judgment: it fetches a meeting's summary + its action items directly from
+    the JSON data files (no model call for that part), then requests a reasoned risk
+    verdict from the client's own model via MCP sampling
+    (`ctx.session.create_message(...)` at `meeting-assistant/server.py:559`) with a
+    short system prompt and `max_tokens=300`. No API key or model name appears
+    anywhere in the server — both are the client's responsibility. Degrades instead of
+    crashing in three distinct cases, each logged via `ctx.log("warning", ...)`: client
+    doesn't declare the sampling capability (checked via
+    `ctx.client_capabilities.sampling` before ever sending the request), the client
+    raises/refuses the sampling request (`except Exception` around `create_message`,
+    tagged with the real `error_class`), and — the one bug actually caught during manual
+    testing — the client returns a syntactically successful but empty completion, which
+    the first version of this code let through silently as `degraded: false` with a
+    blank `assessment`. Added an explicit blank-text check that reclassifies that case
+    as a degraded result too. Every degraded path returns a real, non-empty answer
+    built from the raw signals already fetched (flagged topics, action items missing
+    an owner/due date, still-open items) rather than an empty string.
+    `sampling_request_started`/`sampling_request_finished` (or `_failed`) log
+    notifications carry `duration_ms`.
+  - Verification: Manually driven end-to-end through the MCP Inspector (v2.5.0) against
+    `meeting_id: mtg-2026-08-19-acme-onboarding`: (1) confirmed all 4 tools list in the
+    Inspector's Tools tab after the change, proving the running process picked up the
+    new code; (2) first run surfaced the empty-completion bug live (`degraded: false`,
+    `assessment: ""`) against the Inspector's own mock sampling client; (3) after the
+    fix, re-ran the same call and got `degraded: true` with a populated `assessment`
+    ("No model judgment available (the client returned an empty completion). Raw risk
+    signals: 1 topic(s) flagged for review...") and `riskLevel: "unknown"` — the
+    intended, non-empty degraded output. `uv run python -c "import server"` confirmed
+    clean imports after each edit. No automated test suite exists for this Python
+    server (it's outside `/backend`'s Jest setup); verification here is manual
+    Inspector-driven only.
+  - Notes: Also cleaned up a process-management mess from mid-session: an earlier
+    `taskkill` (intended to force a restart onto the fixed code) killed only the
+    top-level `mcp dev` launcher, not its full child tree, leaving orphaned `uv`/`mcp`/
+    `node` processes that kept the Inspector UI alive against stale/duplicate backend
+    connections. Resolved by explicitly enumerating and killing every related process
+    (by command line and by the actual TCP listeners on ports 6274/6275) before
+    relaunching a single clean instance. No automated tests were added for this
+    server — flagged as a gap if this tool graduates beyond manual smoke-testing.
+
+## 2026-09-05
+
+- [x] Draft transport decision document for the `mcp-server` MCP server
+  - Date: 2026-09-05
+  - Session: CC-20260905-h4tz
+  - What changed: Added `docs/TRANSPORT_DECISION_MCP_SERVER.md`, a standalone
+    decision doc scoped only to `mcp-server/src/server.py` (separate from the
+    pre-existing `docs/TRANSPORT_DECISION.md`, which is scoped only to
+    `meeting-assistant/server.py`). Decision: STDIO, single-user/single-process, no
+    persisted session state — `mcp-server` is a local single-client dev scaffold with
+    no concurrent-client requirement, confirmed by direct user answer rather than
+    assumed. Document includes a STDIO vs StreamableHTTP comparison table, rationale
+    tied to this server's actual (not hypothetical) performance/scalability needs, the
+    unenforced single-user runtime assumption, and explicit criteria for revisiting the
+    decision if a real multi-client requirement ever appears.
+  - Verification: File created; content cross-checked directly against
+    `mcp-server/src/server.py`, `meeting-assistant/server.py`, and
+    `order-status-lookup/server.py` (all read in-session) to confirm every existing MCP
+    server in this repo currently uses STDIO, and against the existing
+    `docs/TRANSPORT_DECISION.md` for structural consistency.
+  - Notes: Documentation only — no code changed, no tests apply. Scope explicitly
+    does not extend to `meeting-assistant/`, `mcp-tutorial/`, or `order-status-lookup/`.
+
+- [x] Verify meeting-assistant transport for multi-user readiness and write its missing README
+  - Date: 2026-09-05
+  - Session: CC-20260905-h4tz
+  - What changed: No transport code change was needed — `meeting-assistant/server.py`
+    already runs `mcp.run(transport="stdio")`, matching the pre-existing
+    `docs/TRANSPORT_DECISION.md` for this server. Wrote `meeting-assistant/README.md`
+    (previously empty) with accurate setup/start instructions
+    (`uv run mcp dev server.py`), the real tool/resource/prompt inventory
+    (`search_action_items`, `get_meeting_summary`, `read_meeting_attachment`,
+    `summarize_meeting_note`, `assess_meeting_risk`; `meetings://catalog`,
+    `meetings://{meeting_id}`; `meeting_recap`), and the `ANTHROPIC_API_KEY` note.
+  - Verification: Restarted the server (`uv run mcp dev server.py`, port conflict on
+    the default 6274 from an unrelated pre-existing process worked around with
+    `CLIENT_PORT=6280`; Inspector came up clean at `http://127.0.0.1:6280`).
+    Independently confirmed all three surfaces over the real stdio transport with a
+    scripted MCP Python client (`mcp.client.Client` + `StdioServerParameters` spawning
+    `server.py` fresh via the project's own venv): `tools/list` returned all 5 tools
+    and `get_meeting_summary` returned correct data; `resources/list` +
+    `read_resource("meetings://catalog")` returned the meeting index;
+    `prompts/list` + `get_prompt("meeting_recap", ...)` returned the expected recap
+    text. Script completed with "ALL THREE VERIFIED OK" — nothing broke, no fixes
+    needed. No automated test suite exists for this Python server.
+  - Notes: An unrelated, pre-existing `node.exe` process (PID 45640, started
+    2026-09-03, not started this session) was found holding port 6274; left untouched
+    per intern-safety/unfamiliar-process rules rather than killed. User may want to
+    close it themselves.
+
+- [x] Build the Trello integration adapter in mcp-server/
+  - Date: 2026-09-05
+  - Session: CC-20260905-h4tz
+  - What changed: Read `.colaberry/plan.json` (REQ-019: Teams, Zoom, Google Meet,
+    Outlook Calendar, Trello) and recommended Trello over the other four — least setup
+    (personal key+token vs. OAuth app registration/admin consent for the Microsoft
+    Graph and Zoom Marketplace options, or Google Meet's Workspace-gated API) and
+    clearest value since STORY-015/016/017 already produce the exact action-item JSON
+    STORY-017 says is meant for "external trackers like Trello." Added
+    `log_action_item_to_trello` to `mcp-server/src/server.py`: inputs (task, owner,
+    due_date, priority, list_id) declared via Annotated + pydantic Field (length
+    limits, a Literal for priority, a 24-hex-char pattern for list_id) so malformed
+    calls are rejected by schema validation before the tool body runs, plus an
+    explicit `datetime.fromisoformat` check on due_date before any network call. Every
+    Trello call goes through stdlib `urllib` (no new dependency) with an explicit 10s
+    timeout, off the event loop via `asyncio.to_thread`. Missing config, a timeout, an
+    HTTP error (classified 401/403 AuthError, 429 RateLimitError, 5xx
+    UpstreamUnavailable, other 4xx ValidationError), or a dead connection all return a
+    safe `{"success": false, "message": ...}` dict, never a crash. Added a
+    dedup-by-title check (GET open cards before POST) per this repo's non-negotiable
+    idempotency rule (same pattern as the documented Basecamp-todo-create case).
+    Updated `mcp-server/README.md` (previously "empty shell — no tools yet") to
+    document both tools and the required Trello env vars.
+  - Verification: A direct-call script exercised all three required failure paths —
+    no credentials configured (clean message, zero network calls), an invalid
+    due_date (rejected pre-network), and Trello unreachable (TRELLO_API_BASE pointed
+    at a closed local port, simulating the system being down) — all returned safe
+    error dicts, printed "ALL TROELLO-TOOL CHECKS PASSED". A second script drove the
+    real stdio MCP protocol (spawning `src/server.py` via the project's own venv
+    python): confirmed `tools/list` includes the new tool with the correct JSON
+    schema, a malformed `list_id` is rejected by the framework's own pydantic
+    validation before any tool code runs (no `tool_started` log line emitted), the
+    not-configured case returns a clean non-error result, and `ping` is unaffected —
+    printed "MCP-SERVER STDIO PROTOCOL CHECKS PASSED". No automated test suite exists
+    for this Python server; verification is scripted-client-driven.
+  - Notes: No new dependency added (stdlib `urllib`, not a new HTTP client package).
+    Dedup-before-create was not explicitly requested by the user but is required by
+    this repo's non-negotiable idempotency rule for side-effecting external calls.
+
+- [x] Audit mcp-server/src/server.py for cross-call state and fix the resulting race
+  - Date: 2026-09-05
+  - Session: CC-20260905-h4tz
+  - What changed: Audited every module-scope item in `mcp-server/src/server.py` for
+    what persists between calls: `TRELLO_API_BASE`/`TRELLO_TIMEOUT_SECONDS`
+    (read-only constants), the `mcp` tool registry (built once at import, never
+    mutated), the implicit thread pool behind `asyncio.to_thread` (created once per
+    process, holds no data), and confirmed credentials are re-read from `os.environ`
+    fresh on every call rather than cached; also confirmed there is no pooled
+    connection to Trello and no file this server appends to. Found the actual
+    cross-call risk was not a variable but a check-then-act race in
+    `log_action_item_to_trello`: the dedup GET and the create POST were not atomic,
+    so two concurrent calls for the same `(list_id, task)` could both pass the dedup
+    check before either created a card, both report `success: true`, and silently
+    leave two duplicate cards in Trello — worse than an error because nothing signals
+    it happened. Fixed it by adding a per-`(list_id, task)` `asyncio.Lock`
+    (`_dedup_locks` + `_dedup_locks_guard`) and wrapping the GET-check + create-POST
+    sequence in that lock, so only calls for the same item ever serialize. Documented
+    the non-risky items plus the new lock's own residual limitations (single-process
+    only; dict never evicted) in a new "What this server assumes" section in
+    `mcp-server/README.md`.
+  - Verification: A scripted concurrency test (in-memory fake Trello via a
+    monkeypatched `_call_trello`, with a deliberate 50ms delay in the GET to force
+    real interleaving) launched two asyncio-concurrent calls for the identical
+    `(list_id, task)` and confirmed exactly one card was created and the second call
+    correctly returned `deduped: true` — printed "RACE CLOSED: exactly one card
+    created, the concurrent duplicate call deduped instead". Re-ran both pre-existing
+    verification scripts from the prior Trello-tool change (direct-call
+    config/validation/down-Trello checks; full stdio-protocol client script) — both
+    still pass unchanged, confirming no regression. No automated test suite exists
+    for this Python server; verification is scripted-client-driven.
+  - Notes: The new `_dedup_locks` dict is itself a piece of cross-call state (by
+    design) — it grows by one entry per distinct action item ever logged by this
+    process and is never evicted; acceptable only because this server is short-lived
+    and single-client per `docs/TRANSPORT_DECISION_MCP_SERVER.md`.
+
+## 2026-09-07
+
+- [x] Add recording -> transcript -> draft -> risk -> email-draft pipeline to the
+  standalone `meeting-assistant/` MCP server
+  - Date: 2026-09-07
+  - Session: CC-20260907-q3xk
+  - What changed: User wants to test Meeting Assistant end to end against real Zoom/
+    Microsoft Teams/Google Meet recordings, through to a reviewable follow-up email,
+    without any step auto-sending. Confirmed scope with the user first (three
+    governance-relevant choices, since a speech-to-text engine and a Gmail-send path
+    are both new external dependencies per this repo's Autonomy Model): (1) the user
+    exports/downloads the recording from each platform themselves and hands this
+    server a local file — no per-platform OAuth/API integration; (2) transcription
+    runs via a local Whisper model (`faster-whisper`), not a paid cloud API; (3) the
+    pipeline stops at a reviewable email draft for now — no real Gmail send is wired
+    up. Added `faster-whisper` (+ `truststore`, to fix a `CERTIFICATE_VERIFY_FAILED`
+    this machine hit downloading the Whisper model — routes the one-time Hugging Face
+    download through the OS cert store instead of the bundled certifi list) to
+    `pyproject.toml`. Added four tools and one prompt to `meeting-assistant/server.py`:
+    `transcribe_meeting_recording` (local Whisper, off the event loop via
+    `asyncio.to_thread`, explicit load/transcribe timeouts, rejects unsupported
+    extensions and out-of-bounds/missing files via the existing
+    `_check_within_declared_roots` sandbox); `draft_meeting_from_transcript` (Claude
+    API call extracting summary/decisions/action items/unresolved issues as strict
+    JSON — an action item with no stated owner or due date comes back `null` +
+    `flaggedForReview: true`, never guessed, mirroring the existing action-item
+    convention); `assess_draft_risk` (delivery-risk judgment on a fresh draft that has
+    no stored `meeting_id` yet — refactored `assess_meeting_risk`'s basis-to-verdict
+    core into a shared `_assess_risk_from_basis` helper so both tools share the exact
+    same degrade-to-raw-signals guardrail instead of duplicating it); and
+    `draft_followup_email` (deliberately deterministic — no model call, so nothing in
+    the email can be hallucinated — builds `{to, subject, body}` and explicitly labels
+    any still-unowned action item "UNASSIGNED -- needs an owner" rather than omitting
+    it; never sends anything, never calls Gmail or any mail provider). Added
+    `meeting_pipeline_from_recording`, a guided prompt chaining all five steps that is
+    explicit it must stop at the draft and never claim something was sent. Generated a
+    short synthetic sample recording (`data/attachments/sample-standup-recording.wav`,
+    via Windows SAPI TTS: one decision, one action item with an owner+deadline, one
+    action item with no owner) so the pipeline could be verified against real speech
+    end to end without waiting on the user's own Zoom/Teams/Meet export. Updated
+    `meeting-assistant/README.md` with the new tool/prompt inventory, the Whisper
+    model-download/offline note, and a step-by-step "Testing a recording end to end"
+    section walking through the same five steps for any of Zoom/Teams/Meet.
+  - Verification: `uv run python -c "import server"` clean after each edit. Full
+    stdio-protocol scripted client (spawning `server.py` via the project's own venv,
+    with a mock sampling callback and a `list_roots` callback declaring the project
+    directory) drove the real pipeline end to end against the synthetic sample
+    recording: `tools/list` shows all 4 new tools alongside the 5 pre-existing ones;
+    `transcribe_meeting_recording` correctly transcribed the sample audio (confirmed
+    against the known scripted text) and correctly failed closed on a missing filename
+    and on an unsupported extension (a real `.txt` attachment); `draft_meeting_from_transcript`
+    produced the expected structured draft, with the legal-followup item correctly
+    coming back `owner: null, flaggedForReview: true` (not fabricated); `assess_draft_risk`
+    returned a real (non-degraded, `degraded: false`) "medium" verdict from the mock
+    sampling client citing the actual unowned item; `draft_followup_email` produced a
+    draft whose body explicitly calls out "UNASSIGNED -- needs an owner" for that item
+    and correctly rejected a malformed recipient address (`found: false`) without
+    throwing. Script printed "ALL PIPELINE CHECKS PASSED". No automated test suite
+    exists for this Python server; verification is scripted-client-driven, same
+    precedent as every prior change to this file.
+  - Notes: Confidence ~80%, logged as an assumption rather than escalated (implementation-
+    level, reversible, local blast radius, no governance boundary crossed once the three
+    scope questions above were answered): `assess_draft_risk` and `draft_followup_email`
+    accept `draft` as a loosely-typed `dict` rather than a fully-specified nested pydantic
+    model, validated defensively (`.get()` with fallbacks) instead of at the MCP schema
+    boundary — reasonable given `draft` is produced by this same server's own
+    `draft_meeting_from_transcript` moments earlier, but a stricter contract would catch
+    a malformed hand-authored `draft` earlier. Real Gmail sending remains explicitly out
+    of scope per the user's own choice — the pipeline's last real step is a draft, and
+    sending is a deliberate action the user takes themselves; if they want an actual
+    send-after-approval tool later, it requires them to first set up a Google Cloud
+    project + OAuth consent screen (a governance-boundary external-dependency decision,
+    not one for Claude to make silently). WHISPER_MODEL_SIZE defaults to "base" as a
+    speed/accuracy balance for short clips — a noisier/longer real Zoom/Teams/Meet
+    recording may warrant "small" or "medium" via that env var.
+
+- [x] Add headless Claude Code routine for backend build validation
+  - Date: 2026-09-16
+  - Session: CC-20260916-v8j3
+  - What changed: Created `scripts/headless-build-check.sh`, a headless (`claude -p`)
+    routine that runs `npm run typecheck --prefix backend` and `npm test --prefix backend`
+    via allowlisted Bash tool calls, requests JSON-only output from Claude, and
+    translates the result into a process exit code for CI/git-hook use.
+  - Verification: `bash -n scripts/headless-build-check.sh` passed (syntax check only).
+  - Notes: Not executed live — running it would spawn a second, API-billed Claude Code
+    process unattended, which wasn't authorized. Script is ready to run once the user
+    invokes it directly.
+
+- [x] Add GitHub Actions workflow for automated PR code review
+  - Date: 2026-09-16
+  - Session: CC-20260916-q7k2
+  - What changed: Committed and pushed `.github/workflows/pr-code-review.yml` (it already
+    existed untracked in the working tree, written previously but never saved to git) — a
+    workflow that runs the official `anthropics/claude-code-action` on every pull request,
+    reads the API key from the GitHub Actions secret `ANTHROPIC_API_KEY` (never hardcoded
+    in the file), and posts inline review comments without auto-approving or merging.
+  - Verification: Pushed successfully to `origin/main` (commit `f62e123`, `e59ce8f..f62e123`).
+    No application code or tests apply to a CI-only YAML file.
+  - Notes: The `ANTHROPIC_API_KEY` secret itself still needs to be added by the user in
+    GitHub's repo Settings > Secrets and variables > Actions — `gh` CLI is not installed
+    on this machine, so that step cannot be automated from here and requires the user's
+    own action.
