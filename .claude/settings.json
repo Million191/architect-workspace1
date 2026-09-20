@@ -9,6 +9,25 @@
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/commit-guard.sh"
           }
         ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/action-item-gate.sh"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/bold-italic-format.sh"
+          }
+        ]
       }
     ]
   }

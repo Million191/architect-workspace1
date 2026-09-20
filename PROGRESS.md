@@ -2239,3 +2239,251 @@
     GitHub's repo Settings > Secrets and variables > Actions — `gh` CLI is not installed
     on this machine, so that step cannot be automated from here and requires the user's
     own action.
+
+- [x] Add /meeting-recap command and action-item-gate hook
+  - Date: 2026-09-16
+  - Session: CC-20260916-r4t9
+  - What changed: Created `.claude/commands/meeting-recap.md`, a slash command that runs
+    the transcript review -> minutes -> action-item extraction -> risk/gap identification
+    -> follow-up drafting pipeline on demand (prefers the meeting-assistant MCP tools when
+    connected, falls back to doing the same steps directly from transcript text; stops at
+    a reviewable draft, never sends). Created `.claude/hooks/action-item-gate.sh`, a
+    PreToolUse hook on the Write tool, scoped to meeting-artifact file paths
+    (minutes/meeting/action-item/recap/follow-up), that parses JSON action-item objects
+    and Markdown "Action Items" tables and blocks (exit 2) the write if any item is
+    missing an owner or due date and isn't already marked flagged. Registered it in
+    `.claude/settings.json` under `PreToolUse` alongside the existing `commit-guard.sh`
+    Bash matcher.
+  - Verification: Ran `action-item-gate.sh` directly against 5 hand-built PreToolUse
+    payloads — JSON item missing owner (exit 2), JSON with `flaggedForReview: true`
+    (exit 0), Markdown table missing due date (exit 2), same bad content on an
+    out-of-scope file path (exit 0), fully-filled Markdown table (exit 0). All five
+    matched the expected exit code.
+  - Notes: No automated test harness exists for `.claude/hooks/*.sh` in this repo
+    (same as `commit-guard.sh`, which also has no test file), so verification was manual
+    invocation with representative payloads. Did not register the meeting-assistant MCP
+    server in `.mcp.json` — not requested, and the command works without it.
+
+- [x] Rename the meeting command to a user-chosen name and run it on a real transcript
+  - Date: 2026-09-16
+  - Session: CC-20260916-r4t9
+  - What changed: Deleted `.claude/commands/meeting-recap.md` (generic label the user
+    rejected) and replaced it with `.claude/commands/check-action-items-and-draft-followups.md`,
+    same pipeline scope (review -> minutes -> action items -> risks -> follow-up drafts,
+    stops before send) but explicit that it must do the whole job and ask for missing
+    input (e.g. a recipient's email address) rather than returning a partial result.
+    `.claude/hooks/action-item-gate.sh` and its `settings.json` registration were not
+    touched.
+  - Verification: Ran the new command against the real, previously-unprocessed transcript
+    `meeting-assistant/data/attachments/sample-standup-transcript.txt` (confirmed via grep
+    that no `meetingId` in `meeting_summaries.json`/`action_items.json` corresponds to it).
+    It correctly flagged the one action item with no stated owner (the legal/DPA
+    follow-up) and the other's owner-stated-but-relative due date ("Friday", no anchor
+    date in the transcript), and correctly found no email address for Priya anywhere in
+    the repo (`grep -i priya` across `meeting-assistant/` returned no `@` address) — user
+    confirmed the report and was asked for that address as the one open input, matching
+    the "ask, don't fabricate" rule in the command.
+  - Notes: On an 8-line sample transcript this did not save meaningful time over reading
+    it directly — the value shown was catching the missing-owner item, not speed. Full
+    assessment of effort saved (and what's missing) given directly to the user in-chat.
+
+- [x] Narrow action-item-gate.sh to least privilege
+  - Date: 2026-09-16
+  - Session: CC-20260916-r4t9
+  - What changed: Hardened `.claude/hooks/action-item-gate.sh` two ways, at the user's
+    request to name and remove permissions it didn't need. (1) The embedded `node -e`
+    call now runs as `node --permission` with no `--allow-fs-read`/`--allow-fs-write`/
+    `--allow-child-process`/`--allow-worker`/`--allow-addons` flags, so the interpreter
+    itself refuses (`ERR_ACCESS_DENIED`) any future attempt to touch the filesystem or
+    spawn a process, instead of that only being true because today's code happens not to
+    do it. (2) Added a path-containment check (via `path.resolve`, which needs no fs
+    permission) so a keyword match on a path outside `$CLAUDE_PROJECT_DIR` is now
+    explicitly out of scope, not just implicitly ignored by the keyword regex.
+  - Verification: Confirmed on this machine's Node 24 runtime that `node --permission`
+    with no allow-flags throws `ERR_ACCESS_DENIED` on `fs.writeFileSync`,
+    `fs.readFileSync`, and `child_process.execSync`, while stdin/stdout/stderr and
+    `process.env` still work normally. Re-ran the full block/pass test matrix against the
+    hardened script (in-project JSON missing owner -> exit 2; outside-project path with
+    identical bad content -> exit 0; `flaggedForReview: true` -> exit 0; Markdown table
+    missing due date -> exit 2; unrelated in-project file path -> exit 0) — all five
+    matched, no regression from the pre-hardening behavior logged earlier this session.
+  - Notes: Node's permission model has no `--allow-env` gate, so `process.env` access
+    was not and could not be restricted this way; that was disclosed to the user rather
+    than implied as covered.
+
+- [x] Add loud-failure verification to the command and the hook
+  - Date: 2026-09-16
+  - Session: CC-20260916-r4t9
+  - What changed: Created `scripts/verify-action-items.js`, a standalone checker that
+    reads a drafted action-items JSON result from stdin and exits non-zero (printing
+    every violation) if any item missing an owner or a real due date (including a bare
+    relative date like "Friday" with no anchor) isn't marked `flaggedForReview: true`, or
+    if anything is flagged that doesn't need to be. Added it as a mandatory step 7 in
+    `.claude/commands/check-action-items-and-draft-followups.md`, run before the command
+    may report its result as done; a non-zero exit blocks the "done" report. Added the
+    same fail-loud principle to `.claude/hooks/action-item-gate.sh`: it now tracks
+    whether it actually recognized any action-item structure (JSON or table), and if a
+    file mentions action items/owners/due dates but matches neither recognized shape, it
+    now blocks with a "could not verify" message instead of silently exiting 0 -- closing
+    a real silent-pass gap the hook had before this change.
+  - Verification: (1) Ran the *unmodified* hook against a bulleted-list "Action Items"
+    section it doesn't parse (owner/due both stated as missing/TBD) and confirmed it
+    exited 0 (silently wrong) before the fix, then confirmed the fixed hook exits 2 on the
+    identical input with a "could not verify" message. Re-ran the full prior regression
+    matrix (7 cases) after the fix with no change in expected outcome. (2) While writing
+    `scripts/verify-action-items.js` itself, the hook's keyword-only scoping blocked that
+    very Write (its own comments mention "action items"/"owner"/"due date" in prose) --
+    a live false positive, fixed by additionally requiring a `.md`/`.markdown`/`.json`/
+    `.txt` extension before the path-keyword check applies, since meeting artifacts are
+    data files, not source code; re-ran the regression matrix again after that fix, still
+    correct. (3) Ran `verify-action-items.js` against a deliberately broken table (a
+    missing-owner/missing-date item left unflagged) and confirmed `VERIFY FAILED` with
+    the exact violation named; ran it again with the gap flagged and got `VERIFY PASSED`;
+    also confirmed it catches the reverse case (an item flagged that has no real gap) and
+    rejects non-JSON input.
+  - Notes: Documented in the command file and this entry what neither verifier checks --
+    factual correctness of task/owner/date against the source transcript, sensible
+    calendar dates, or anything outside the action-items array/table (minutes text,
+    follow-up email bodies) is unverified by either check.
+
+- [x] Add push-triggered code review workflow that always comments
+  - Date: 2026-09-16
+  - Session: CC-20260916-r4t9
+  - What changed: Created `.github/workflows/push-code-review.yml`, separate from the
+    existing PR-triggered `pr-code-review.yml`. Triggers on `push` to any branch
+    (tag pushes and branch-deletion pushes excluded). Computes the pushed commit range
+    (falling back to the empty-tree SHA for a brand-new branch's first push), runs
+    `anthropics/claude-code-action@v1` against that diff with the same CLAUDE.md-rule
+    review prompt as the PR workflow, and always -- via `if: always()` plus
+    `continue-on-error: true` on the review step -- posts a commit comment on the pushed
+    SHA: the review's findings on success, or an explicit tooling-failure notice (linking
+    the run) if the review step errored or produced no output. `contents: write` is the
+    only permission granted (needed to create the commit comment). The checkout step
+    disables `persist-credentials` so the AI review step has no git-push credential at
+    all; only the final, non-AI comment-posting step receives `GH_TOKEN`. No secret value
+    is in the file -- `secrets.ANTHROPIC_API_KEY` is referenced by name only, and adding
+    the actual key in GitHub Settings is left to the user as a deliberate next step, per
+    their request.
+  - Verification: Validated the YAML parses correctly (`npx js-yaml` round-tripped it to
+    JSON with no error). Manually simulated the diff-range shell logic for both a normal
+    before/after and an all-zero (new-branch) before, confirming the empty-tree fallback
+    fires correctly in both the "SHA doesn't exist" and "literal zero SHA" cases. Not run
+    against a real push yet -- that requires the `ANTHROPIC_API_KEY` secret to be added
+    first, which the user is deferring deliberately.
+  - Notes: Did not attempt to add the secret or trigger a real push -- both are explicitly
+    the user's next, deliberate step. Plain-English trigger/scope/cost explanation given
+    directly to the user in-chat rather than duplicated here.
+
+- [x] Add unit tests for the new meeting-assistant MCP tools
+  - Date: 2026-09-17
+  - Session: CC-20260917-q3v8
+  - What changed: Added `meeting-assistant/tests/` (`conftest.py` + `test_server.py`,
+    30 tests) covering the deterministic logic added to `server.py` in the prior
+    (unlogged) session: `_parse_meeting_draft_json`, `_extract_risk_level`,
+    `_degraded_risk_result`, `_resolve_correlation_id`, `_check_within_declared_roots`
+    (including dot-dot-traversal and sibling-directory-prefix boundary cases), and the
+    two tools testable without mocking the Anthropic SDK or a Whisper model:
+    `draft_followup_email` (pure formatting, no external calls) and `assess_draft_risk`'s
+    degraded/no-sampling path (exercises its basis-building logic without a real model
+    response). Each covered unit has happy-path, failure-path, boundary, and
+    idempotency cases per this repo's Test Strategy Framework. `conftest.py` defines a
+    `FakeContext`/`FakeSession` test double for `mcp.server.mcpserver.Context` (a
+    pydantic model whose `.log()` needs a live session to construct for real) rather
+    than mocking the real MCP transport. Added `pytest` and `pytest-asyncio` as dev
+    dependencies (`uv add --dev`) and `[tool.pytest.ini_options]` (`pythonpath`,
+    `asyncio_mode = "auto"`) to `pyproject.toml` -- this project had no test framework
+    or test directory before. Documented the one-command test invocation and coverage
+    scope in `meeting-assistant/README.md`.
+  - Verification: `uv run pytest tests/ -v` — 30 passed, 0 failed (run from
+    `meeting-assistant/`). One test's initial assumption about `assess_draft_risk`'s
+    status handling was wrong (it marks every draft action item `"status": "open"`
+    unconditionally, since a fresh draft has no persisted status yet) — the test was
+    corrected to match that real behavior, plus a second boundary test added to
+    document it explicitly, rather than changing the (correct) production code.
+  - Notes: Out of scope for this pass: `transcribe_meeting_recording`,
+    `summarize_meeting_note`, `draft_meeting_from_transcript`, and the model-available
+    branch of `assess_meeting_risk`/`assess_draft_risk` — these need a mocked/real
+    Whisper model or Anthropic API response to exercise meaningfully and are noted as
+    a gap in both the test file's module docstring and the README, not silently
+    skipped. The `server.py` feature work itself (recording→transcript→draft→risk→email
+    pipeline, structured logging, roots-based path validation) landed in an earlier
+    session that predates this repo's current PROGRESS.md gate and was not logged at
+    the time; this entry catches up its test coverage only, per the Catch-up rule, and
+    does not re-describe the feature itself (see the diff on `server.py` for that).
+
+- [x] Generate an HTML pytest report on request and gitignore its output
+  - Date: 2026-09-17
+  - Session: CC-20260917-q3v8
+  - What changed: Added `pytest-html` as a dev dependency (`uv add --dev`) so the user
+    could view the 30-test suite's results as a browser page rather than terminal
+    output. Generated `meeting-assistant/tests/report/test_report.html` via
+    `uv run pytest tests/ -v --html=tests/report/test_report.html --self-contained-html`
+    and opened it in the default browser. Added `.pytest_cache/` and
+    `meeting-assistant/tests/report/` to the root `.gitignore` — this is a regenerable
+    build artifact, not source, and shouldn't be committed.
+  - Verification: Report generated with 30/30 passed (same run as the prior entry);
+    opened successfully via `Start-Process` on the local file path.
+  - Notes: The report file itself is gitignored and not meant to ship; only the
+    `.gitignore` rule and the `pytest-html` dev dependency are durable changes.
+
+- [x] Add reliability tests for the meeting-assistant MCP server across 7 categories
+  - Date: 2026-09-17
+  - Session: CC-20260917-b5n8
+  - What changed: Extended `meeting-assistant/tests/conftest.py` with
+    `FakeSession.create_message` (MCP sampling), `patch_whisper` (fakes
+    `_get_whisper_model`/`_run_whisper_transcription`, including timeout-forcing
+    delays), `patch_claude` (fakes `_get_claude_client`), and a `synthetic_data`
+    fixture that monkeypatches `ACTION_ITEMS_PATH`/`MEETING_SUMMARIES_PATH`/
+    `ATTACHMENTS_ROOT` to a throwaway synthetic tree so no test ever reads or writes
+    the real files under `meeting-assistant/data/`. Added 7 new test files (68 tests):
+    `test_transcription_reliability.py` (virtual/physical recordings, silent audio,
+    corrupt file, model/transcribe timeouts), `test_summarization_and_draft_reliability.py`
+    (summarization + draft extraction happy paths, missing-owner/missing-due-date
+    flagging, unparseable/sparse model output, Claude timeout/rate-limit/auth/
+    connection errors), `test_lookup_tools_reliability.py` (search_action_items,
+    get_meeting_summary, read_meeting_attachment — previously untested),
+    `test_risk_assessment_reliability.py` (model-available risk verdicts with
+    evidence-based `basis`, sampling failure/empty-completion degrade paths —
+    previously untested), `test_email_approval_gate.py` (asserts no registered MCP
+    tool name looks send/deliver/dispatch-like, draft_followup_email always
+    discloses it was not sent), `test_mcp_contract_and_empty_input.py` (empty
+    transcript/text rejected via the real `mcp.call_tool` pydantic validation layer,
+    not just the function body), `test_duplicate_requests_and_idempotency.py`
+    (repeated calls never mutate the JSON data stores; full
+    transcribe→draft→risk→email pipeline run twice with identical inputs produces
+    byte-identical results). No changes to `server.py` (production code) or to the
+    real files under `meeting-assistant/data/`.
+  - Verification: `uv run pytest tests/ -v` from `meeting-assistant/` — 98 passed,
+    0 failed (30 pre-existing + 68 new), reported on this exact run, not assumed.
+  - Notes: Session ID was minted mid-task (the session started directly on the
+    testing request rather than through the CLAUDE.md session-start protocol) —
+    catch-up logging per the Catch-up rule, not a violation in progress. Every
+    external service (faster-whisper, Anthropic Messages API, MCP client sampling)
+    is mocked; no network call, no real API key, and no email send occurs anywhere
+    in this suite. Remaining gaps (by design, per this repo's own mocking rule, not
+    an oversight): no test exercises a *real* faster-whisper model or a *real*
+    Anthropic API response — see the chat report for the full remaining-risk list,
+    including that `search_action_items`/`get_meeting_summary` still have no
+    negative/malformed-JSON-on-disk test, and that draft_meeting_from_transcript's
+    `meeting_title` passthrough and `max_length` boundaries are untested.
+
+- [x] Register the bold+italic reply-formatting hook
+  - Date: 2026-09-20
+  - Session: CC-20260920-x9q4
+  - What changed: Added `.claude/hooks/bold-italic-format.sh`, a `UserPromptSubmit` hook
+    that injects an `additionalContext` instruction on every turn telling Claude to wrap
+    its whole text reply in Markdown bold+italics. Registered it under `UserPromptSubmit`
+    in `.claude/settings.json`. That same `.claude/settings.json` diff also carried the
+    `action-item-gate.sh` `Write`-matcher registration from the prior (already-logged,
+    already-committed-in-PROGRESS.md-but-not-in-git) "Add /meeting-recap command and
+    action-item-gate hook" entry, which had never actually been committed — this commit
+    carries both registrations since they live in the same file and splitting one file's
+    diff across two commits isn't possible with a plain `git add <path>`.
+  - Verification: `bash -n .claude/hooks/bold-italic-format.sh` — syntax OK. Ran the
+    script directly and parsed its stdout with `JSON.parse` (Node) — valid JSON, correct
+    `hookEventName: "UserPromptSubmit"` shape.
+  - Notes: First real run of the new `/mark-verification-complete` command. It surfaced a
+    pre-existing gap it doesn't fully solve on its own: `.claude/settings.json` already
+    held one prior story's uncommitted registration, so "stage exactly the files this
+    piece of work touched" collapsed two stories into one commit at the file level. Flagged
+    here rather than silently split or silently merged without comment.
