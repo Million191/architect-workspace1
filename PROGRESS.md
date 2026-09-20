@@ -2487,3 +2487,82 @@
     held one prior story's uncommitted registration, so "stage exactly the files this
     piece of work touched" collapsed two stories into one commit at the file level. Flagged
     here rather than silently split or silently merged without comment.
+
+- [ ] Add the PROGRESS.md commit gate hook (progress-gate.sh)
+  - Date: 2026-09-20
+  - Session: CC-20260920-x9q4
+  - What changed: Added `.claude/hooks/progress-gate.sh`, a `PreToolUse`/`Bash` hook that
+    blocks a `git commit` touching `backend/`, `frontend/`, `scripts/`, `nginx/`, or
+    `directives/` when the same commit doesn't also include `PROGRESS.md`, per CLAUDE.md's
+    PROGRESS.md hard gate. Registered it in `.claude/settings.json` alongside
+    `commit-guard.sh` under the existing `Bash` matcher. Read-only by design: it only runs
+    informational `git diff` plumbing, never `git add`/`commit`/`reset` or any Write/Edit —
+    it can observe and block, but cannot "fix" a blocked commit by staging PROGRESS.md
+    itself, since a hook that could satisfy its own gate would defeat the gate's purpose.
+  - Verification: Built to fail loudly (block with a specific stderr reason) rather than
+    silently allow. Live-tested against the actually-wired hook in this session (not just
+    simulated payloads): (1) staged a real `scripts/` file with PROGRESS.md unstaged ->
+    real `git commit` blocked, exit 2, correct reason printed; (2) same file staged
+    together with a real PROGRESS.md change -> allowed; (3) an ungated `docs/` file alone
+    staged -> allowed silently. Deliberately broke it on purpose: ran a real
+    `git commit -am "..."` in the same Bash call as an uncommitted edit to a tracked
+    `scripts/` file (no prior `git add`) -- the first hook version let this through as a
+    real, uncommitted-but-live local commit (`98a5e61`), because a `PreToolUse` hook can
+    only see git state as it existed *before* the tool call runs, so the file's not-yet-run
+    modification and the `-am` sweep were both invisible to the pre-check. Un-did that
+    commit locally with `git reset --soft HEAD~1` (nothing pushed) and fixed the hook to
+    block outright (fail closed) whenever `git commit` is not the true leading statement of
+    the whole command, rather than trying to guess whether an unseen prior statement was
+    safe. Re-verified the fix against the exact failing case (now blocked) and against all
+    three passing scenarios above (still correct, no regression).
+  - Notes: A related bug was found and fixed during the same pass: the leading-statement
+    check first used `grep -E '^...'`, but grep's `^` anchors per *line*, not per whole
+    string, so a `git commit` starting line 3 of a multi-line command looked "leading" too.
+    Switched that one check to bash's own `[[ =~ ]]`, which anchors to the whole string.
+    Known, accepted limitations (fail-loud only where it can actually see state, not a
+    guarantee against every bypass): (1) keyword-based detection can false-positive on a
+    command that merely contains the text "git commit" in an unrelated quoted string
+    (observed live during this session's own testing); (2) any `git commit` combined with
+    another statement in the same call is now blocked outright rather than evaluated, even
+    when that other statement was harmless (e.g. `cd dir && git commit -m ...`) -- this
+    trades some false positives for closing the state-visibility gap; (3) it has no way to
+    know whether a PROGRESS.md entry actually describes the change or is a placeholder --
+    it only checks that the file is part of the same commit, not the content's honesty.
+    This entry is left unchecked (`- [ ]`) pending the user's decision on whether/when to
+    commit `progress-gate.sh` and `.claude/settings.json` themselves — not yet committed.
+
+- [x] Add /session-start command and claude-dir-drift-warn.sh hook
+  - Date: 2026-09-20
+  - Session: CC-20260920-b3n7
+  - What changed: Added `.claude/commands/session-start.md`, a read-only slash command
+    that runs CLAUDE.md's Session start protocol in one shot (mint a fresh Session ID,
+    read CLAUDE.md and PROGRESS.md in full, check the ID against PROGRESS.md for
+    collisions, report the first unchecked task and any other instance's in-flight
+    entries). Added `.claude/hooks/claude-dir-drift-warn.sh`, a non-blocking `PreToolUse`
+    `Bash` hook that, on a leading git-commit call, compares `.claude/`'s real dirty
+    state (staged/unstaged/untracked) against what that commit actually includes and
+    attaches a `permissionDecisionReason` warning (never a block) when something's left
+    out — the config-drift case `progress-gate.sh` doesn't cover since it only watches
+    `backend/frontend/scripts/nginx/directives`. Registered the new hook in
+    `.claude/settings.json` alongside `commit-guard.sh`/`progress-gate.sh` under the
+    existing `Bash` matcher. Documented both in `.claude/README.md`.
+  - Verification: `bash -n .claude/hooks/claude-dir-drift-warn.sh` -> syntax OK.
+    `.claude/settings.json` parses as valid JSON (`JSON.parse` via `node -e`). Live-tested
+    the hook against four real stdin payloads (not simulated): (1) a bare git-commit
+    payload with real dirty `.claude/` files present -> warned, listing exactly those
+    files; (2) same scenario after staging some of them -> warning narrowed to only the
+    still-uncommitted files, correctly excluding what was now staged; (3) a compound
+    two-command payload (stage-then-commit) -> skipped silently (plain allow, no
+    warning), matching the documented leading-statement limitation instead of
+    false-positiving; (4) an unrelated `npm test` payload -> plain allow, untouched.
+    `session-start.md`'s frontmatter (`description`, `allowed-tools`) parses and matches
+    the shape of the repo's other command files; it has not been live-invoked as an
+    actual slash command in this session, since it is a read-only prompt file with no
+    independent mechanical test.
+  - Notes: Testing this hook also reproduced `progress-gate.sh`'s already-documented
+    false-positive live: a test Bash command whose text merely contained the two-word
+    git-commit phrase inside a quoted JSON string got blocked by that hook (not a new
+    bug — confirms the existing limitation noted in the entry above). Worked around it
+    in testing by writing payloads to scratch files and piping from the file instead of
+    inlining that text in the Bash command, and used the Edit tool rather than a Bash
+    heredoc to write this very entry for the same reason (it also names that phrase).
