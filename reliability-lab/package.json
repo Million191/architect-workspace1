@@ -1,0 +1,13 @@
+{
+  "name": "reliability-lab",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Order desk + stand-in vendor for reliability exercises. Zero dependencies.",
+  "main": "desk.js",
+  "scripts": {
+    "confirm": "node desk.js confirm",
+    "profile": "node profileDesk.js",
+    "test": "node check-idempotency.js && node check-profile-idempotency.js",
+    "test:profile": "node check-profile-idempotency.js"
+  }
+}
