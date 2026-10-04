@@ -1,0 +1,57 @@
+/* Meeting Assistant — avatars, avatar stacks, person chips, People screen. Tokens only. */
+.person-avatar { display: inline-grid; place-items: center; flex: none; border-radius: 50%; object-fit: cover; color: #fff; font-weight: var(--weight-semibold); line-height: 1; background-color: var(--color-neutral); overflow: hidden; }
+.person-avatar[data-initials]::before { content: attr(data-initials); }
+.person-avatar-sm { width: 24px; height: 24px; font-size: 10px; }
+.person-avatar-md { width: 32px; height: 32px; font-size: var(--text-xs); }
+.person-avatar-lg { width: 44px; height: 44px; font-size: var(--text-sm); }
+.avatar-more { background: var(--color-surface-hover); color: var(--color-text-muted); border: var(--border-width) solid var(--color-border); }
+.avatar-empty { background: transparent; border: 1.5px dashed var(--color-border-strong); }
+
+/* Stack: overlapping avatars with a surface-coloured ring so they separate on any background */
+.avatar-stack { display: inline-flex; align-items: center; padding: 2px; border: 0; border-radius: var(--radius-full); background: transparent; font: inherit; color: inherit; vertical-align: middle; }
+.avatar-stack .person-avatar { box-shadow: 0 0 0 2px var(--color-surface); }
+.avatar-stack .person-avatar + .person-avatar { margin-left: -6px; }
+button.avatar-stack { cursor: pointer; min-height: 32px; }
+button.avatar-stack:hover { background: var(--color-surface-hover); }
+/* In a calendar block the stack sits in the bottom-right corner, so short blocks keep their title and time readable */
+.cal-block .avatar-stack { position: absolute; right: 4px; bottom: 3px; padding: 0; }
+.cal-block .avatar-stack .person-avatar { width: 18px; height: 18px; font-size: 8px; }
+.cal-block:has(.avatar-stack) .cal-block-meta { padding-right: 58px; }
+.transcript-speaker { display: flex; align-items: center; gap: 6px; }
+.transcript-speaker .person-avatar { width: 18px; height: 18px; font-size: 8px; }
+.cal-list-row .avatar-stack .person-avatar, .row-link .avatar-stack .person-avatar { box-shadow: 0 0 0 2px var(--color-surface); }
+
+/* Chip: avatar + name (email on hover) */
+.person-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; vertical-align: middle; }
+.person-chip .person-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.person-email { font-size: var(--text-xs); color: var(--color-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip .person-avatar { width: 20px; height: 20px; font-size: 9px; margin-left: -5px; margin-right: 2px; }
+.owner-cell { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.owner-cell .inline { margin-left: 0; }
+
+/* Full participant list (popover) and suggestions */
+.people-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.people-list-item, .suggest-item { display: flex; align-items: center; gap: 10px; padding: 6px 4px; border-radius: var(--radius-sm); }
+.people-list-text { display: flex; flex-direction: column; min-width: 0; }
+.chip-field { position: relative; }
+.suggest-list { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 5; list-style: none; margin: 0; padding: var(--space-half); background: var(--color-surface); border: var(--border-width) solid var(--color-border); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); max-height: 260px; overflow: auto; }
+.suggest-item { cursor: pointer; min-height: 44px; padding: 6px 8px; }
+.suggest-item[aria-selected="true"], .suggest-item:hover { background: var(--color-surface-hover); }
+
+/* People screen */
+.people-filter { width: min(280px, 100%); }
+.person-rows { list-style: none; margin: 0; padding: 0; }
+.person-row { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(0, 1.6fr); gap: var(--space-3); align-items: start; padding: var(--space-2) var(--space-3); border-bottom: var(--border-width) solid var(--color-border); }
+.person-row:last-child { border-bottom: 0; }
+.person-row-who { display: flex; gap: 12px; align-items: center; min-width: 0; }
+.person-row-text { display: flex; flex-direction: column; min-width: 0; }
+.person-row-edit { display: grid; grid-template-columns: 1fr 1fr auto; gap: var(--space-1); align-items: end; }
+.person-row-edit .field + .field { margin-top: 0; }
+.person-row-edit .help-error { grid-column: 1 / -1; }
+.person-none { padding: var(--space-3); }
+
+@media (max-width: 720px) {
+  .person-row { grid-template-columns: 1fr; gap: var(--space-2); padding: var(--space-2); }
+  .person-row-edit { grid-template-columns: 1fr; }
+  .person-row-edit .btn { height: 44px; }
+}

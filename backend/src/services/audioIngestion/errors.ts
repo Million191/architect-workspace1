@@ -46,3 +46,8 @@ export class ConfigurationError extends IngestionError {
 export class TaggingError extends IngestionError {
   readonly errorClass = 'TaggingError';
 }
+
+/** The circuit breaker is open (or a half-open probe is already in flight) — the call was rejected without touching the upstream at all. */
+export class CircuitOpenError extends IngestionError {
+  readonly errorClass = 'CircuitOpenError';
+}

@@ -68,3 +68,13 @@ describe('extractClaimedFormat', () => {
     expect(extractClaimedFormat('recording')).toBeNull();
   });
 });
+
+describe('browser recording formats', () => {
+  it('recognises WebM (EBML) and Ogg by their bytes', () => {
+    expect(sniffAudioFormat(Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0x01, 0x00]))).toBe('webm');
+    expect(sniffAudioFormat(Buffer.from('OggS\u0000\u0002rest', 'binary'))).toBe('ogg');
+    expect(sniffAudioFormat(Buffer.from([0x1a, 0x45]))).toBeNull();
+    expect(extractClaimedFormat('recording.webm')).toBe('webm');
+    expect(extractClaimedFormat('recording.ogg')).toBe('ogg');
+  });
+});

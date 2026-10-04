@@ -24,3 +24,10 @@ Thumbs.db
 # Scratch space (per CLAUDE.md: always safe to delete, never committed)
 tmp/
 /tmp/
+
+# Generated test artifacts
+.pytest_cache/
+meeting-assistant/tests/report/
+
+# Meeting assistant runtime data (attendee addresses, sent-email log, action items) — never commit
+backend/data/

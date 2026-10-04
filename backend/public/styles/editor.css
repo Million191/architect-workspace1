@@ -1,0 +1,136 @@
+/* Meeting Assistant — minutes editor (sections, toolbar, action items), versions, review tabs. Tokens only. */
+.review-banners { display: grid; gap: var(--space-1); margin-bottom: var(--space-2); }
+.review-tabs { display: none; }
+.minutes-panel { display: grid; gap: var(--space-2); }
+.md-sections { display: grid; gap: var(--space-2); }
+
+/* Section card */
+.md-section { padding: 0; transition: box-shadow var(--duration) var(--ease), border-color var(--duration) var(--ease); }
+.md-section:focus-within { border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border)); box-shadow: 0 0 0 3px var(--color-focus); }
+.md-section.is-dragging { opacity: 0.5; }
+.md-section.is-drop-target, .ai-row.is-drop-target { box-shadow: inset 0 3px 0 var(--color-accent); }
+.md-section-head { display: flex; align-items: center; gap: var(--space-1); padding: 10px var(--space-2) 4px; }
+.md-title { flex: 1; min-width: 0; font-weight: var(--weight-semibold); font-size: var(--text-md); }
+.md-handle { display: grid; place-items: center; width: 24px; height: 32px; border: 0; background: transparent; color: var(--color-text-subtle); cursor: grab; border-radius: var(--radius-sm); font-size: 14px; }
+.md-handle:hover { background: var(--color-surface-hover); color: var(--color-text); }
+.md-section-actions { display: flex; gap: 2px; opacity: 0.55; transition: opacity var(--duration) var(--ease); }
+.md-section:hover .md-section-actions, .md-section:focus-within .md-section-actions { opacity: 1; }
+.md-edited { height: 20px; font-size: 11px; }
+.md-editor { position: relative; padding: 0 var(--space-2) var(--space-2); }
+.md-add { display: flex; }
+
+/* Quill body, restyled to the app (only quill.core.css is loaded; no theme) */
+.md-quill .ql-editor { min-height: 72px; padding: 8px 10px; font: var(--text-base) / var(--leading-normal) var(--font-sans); color: var(--color-text); border-radius: var(--radius-sm); outline: none; }
+.md-quill .ql-editor:hover { background: var(--color-surface-subtle); }
+.md-quill .ql-editor:focus { background: transparent; }
+.md-quill .ql-editor.ql-blank::before { left: 10px; right: 10px; font-style: normal; color: var(--color-text-subtle); }
+.md-quill .ql-editor h2 { font-size: var(--text-md); margin: 8px 0 4px; }
+.md-quill .ql-editor h3 { font-size: var(--text-base); margin: 6px 0 2px; }
+.md-quill .ql-editor blockquote { margin: 6px 0; padding: 4px 12px; border-left: 3px solid var(--color-accent); color: var(--color-text-muted); background: var(--color-accent-subtle); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.md-quill .ql-editor a { color: var(--color-accent); }
+.md-quill .ql-disabled .ql-editor:hover { background: transparent; }
+::highlight(spelling) { text-decoration: underline wavy var(--color-danger); text-decoration-skip-ink: none; text-underline-offset: 3px; }
+
+/* Toolbar: appears while the section is being edited */
+.rt-toolbar { display: none; gap: 2px; padding: 4px; margin-bottom: 4px; border: var(--border-width) solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-sm); width: max-content; max-width: 100%; }
+.md-section:focus-within .rt-toolbar { display: flex; }
+.rt-btn { min-width: 32px; height: 30px; padding: 0 8px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--color-text-muted); font: var(--weight-semibold) var(--text-sm) var(--font-sans); cursor: pointer; }
+.rt-btn:hover { background: var(--color-surface-hover); color: var(--color-text); }
+.rt-btn[aria-pressed="true"] { background: var(--color-accent-subtle); color: var(--color-accent); }
+.rt-btn.is-italic { font-style: italic; font-family: Georgia, serif; }
+
+/* Action items: line 1 = handle, done, task, menu; line 2 = owner, due date, priority, time */
+.ai-list { list-style: none; margin: 0; padding: 0; }
+.ai-row { display: grid; grid-template-columns: 24px 22px minmax(0, 1fr) 132px 104px 32px; grid-template-areas: "handle done task task task menu" ". . owner due prio ."; gap: 4px var(--space-1); align-items: center; padding: 10px 0; border-top: var(--border-width) solid var(--color-border); }
+.ai-row > .md-handle { grid-area: handle; }
+.ai-row > .checkbox { grid-area: done; }
+.ai-row > .ai-main { grid-area: task; }
+.ai-row > .owner-picker { grid-area: owner; }
+.ai-row > .ai-due { grid-area: due; }
+.ai-row > .ai-priority { grid-area: prio; }
+.ai-row > .ai-menu { grid-area: menu; }
+.ai-list .ai-row:first-child { border-top: 0; }
+.ai-head { display: none; }
+.ai-row.is-dragging { opacity: 0.5; }
+.ai-row.is-done .ai-task { text-decoration: line-through; color: var(--color-text-muted); }
+.ai-main { min-width: 0; display: flex; align-items: center; gap: 6px; }
+.ai-main .spell-wrap, .ai-main > .ai-task { flex: 1; min-width: 0; }
+.ai-meta { display: flex; align-items: center; gap: 6px; flex: none; }
+.ai-meta:empty { display: none; }
+.owner-picker { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.owner-field { position: relative; flex: 1; min-width: 0; }
+.owner-field .inline { margin-left: 0; width: 100%; }
+.ai-row .inline { min-width: 0; }
+.ai-row select.inline { appearance: auto; padding-right: 4px; }
+.ai-dismissed { margin-top: var(--space-2); font-size: var(--text-sm); color: var(--color-text-muted); }
+.ai-dismissed ul { list-style: none; margin: var(--space-1) 0 0; padding: 0; display: grid; gap: 4px; }
+.ai-dismissed li { display: flex; align-items: center; justify-content: space-between; gap: var(--space-1); text-decoration: line-through; }
+.ai-dismissed li .btn { text-decoration: none; }
+#addActionItem { margin-top: var(--space-1); }
+.minutes-panel, .md-section, .md-editor { min-width: 0; }
+.md-section-head { min-width: 0; flex-wrap: wrap; }
+
+/* Transcript helpers */
+.transcript-time-btn { border: 0; background: transparent; padding: 0; text-align: left; cursor: pointer; border-radius: 4px; }
+.transcript-time-btn:hover { color: var(--color-accent); text-decoration: underline; }
+.transcript-hint { margin-left: auto; }
+.transcript-add { position: absolute; z-index: 5; box-shadow: var(--shadow-md); }
+.toast-action { margin-left: auto; border: 0; background: transparent; color: var(--color-accent-subtle); font: var(--weight-semibold) var(--text-sm) var(--font-sans); text-decoration: underline; cursor: pointer; padding: 4px; }
+:root[data-theme="dark"] .toast-action { color: var(--color-accent); }
+
+
+/* Phones: transcript and minutes as tabs; toolbar pinned above the on-screen keyboard */
+@media (max-width: 720px) {
+  .review-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin-bottom: var(--space-2); border-radius: var(--radius-md); background: var(--color-surface-subtle); border: var(--border-width) solid var(--color-border); position: sticky; top: calc(var(--topbar-height) + 4px); z-index: 15; }
+  .review-tab { min-height: 44px; border: 0; border-radius: 8px; background: transparent; color: var(--color-text-muted); font: var(--weight-medium) var(--text-base) var(--font-sans); cursor: pointer; }
+  .review-tab[aria-selected="true"] { background: var(--color-surface); color: var(--color-text); box-shadow: var(--shadow-sm); }
+  .review-tab-minutes .transcript-panel, .review-tab-transcript .minutes-panel { display: none; }
+  .transcript-panel { max-height: none; }
+  .ai-row { grid-template-columns: 32px 26px minmax(0, 1.25fr) minmax(0, 1fr) 44px; grid-template-areas: "handle done task task menu" ". . owner owner ." ". . due prio ."; }
+  .ai-row .inline, .ai-row select.inline { min-height: 44px; }
+  .md-handle { width: 32px; height: 44px; }
+  .md-title { flex: 1 1 calc(100% - 44px); }
+  .md-section-actions { margin-left: auto; }
+  .md-section-actions { opacity: 1; }
+  .md-section-actions .btn { width: 44px; height: 44px; padding: 0; }
+  .rt-btn { min-width: 44px; height: 44px; }
+  .md-section:focus-within .rt-toolbar { position: fixed; left: 8px; right: 8px; bottom: calc(8px + var(--kb-offset, 0px)); z-index: 60; width: auto; justify-content: space-around; box-shadow: var(--shadow-lg); }
+  .md-quill .ql-editor { min-height: 96px; font-size: var(--text-md); }
+  .transcript-time-btn { min-height: 44px; }
+}
+
+/* Version history */
+.cal-dialog-dialog.cal-dialog-wide { width: min(980px, calc(100vw - 32px)); max-height: calc(100vh - 48px); }
+.versions { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: var(--space-2); min-height: 360px; }
+.version-side { display: flex; flex-direction: column; gap: var(--space-1); }
+.version-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; overflow: auto; max-height: 60vh; }
+.version-item { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; min-height: 44px; padding: 8px 10px; border: var(--border-width) solid transparent; border-radius: var(--radius-sm); background: transparent; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.version-item:hover { background: var(--color-surface-hover); }
+.version-item[aria-current="true"] { background: var(--color-accent-subtle); border-color: var(--color-border); }
+.version-detail { min-width: 0; overflow: auto; max-height: 64vh; padding-right: 4px; }
+.version-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-2); }
+.compare-section { padding: var(--space-1) 0; border-bottom: var(--border-width) solid var(--color-border); }
+.compare-title { margin-bottom: 4px; }
+.diff, .version-text { white-space: pre-wrap; margin: 0; font-size: var(--text-sm); line-height: 1.6; }
+.diff-add { background: var(--color-success-subtle); color: var(--color-success); text-decoration: none; border-radius: 3px; padding: 0 1px; }
+.diff-del { background: var(--color-danger-subtle); color: var(--color-danger); text-decoration: line-through; border-radius: 3px; padding: 0 1px; }
+.version-items { margin: 0; padding-left: 18px; font-size: var(--text-sm); }
+@media (max-width: 720px) {
+  .versions { grid-template-columns: 1fr; }
+  .version-list { max-height: 30vh; }
+}
+
+/* AI help, corrections, presence */
+.md-ai .icon { color: var(--color-accent); }
+.assist-preview { padding: var(--space-2); margin: var(--space-1) 0; border: var(--border-width) dashed var(--color-accent); border-radius: var(--radius-md); background: var(--color-accent-subtle); }
+.assist-preview p { margin: 0 0 6px; }
+.corrections h3 { margin-top: var(--space-2); }
+.corr-speakers { display: grid; gap: 6px; margin: var(--space-1) 0; }
+.corr-row { display: grid; grid-template-columns: minmax(0, 160px) minmax(0, 1fr) auto; gap: var(--space-1); align-items: center; }
+.corr-lines { list-style: none; margin: var(--space-1) 0 0; padding: 0; display: grid; gap: var(--space-1); max-height: 46vh; overflow: auto; }
+.corr-lines li { display: grid; gap: 2px; }
+.presence { display: inline-flex; align-items: center; gap: 6px; }
+.presence:empty { display: none; }
+@media (max-width: 720px) { .corr-row { grid-template-columns: 1fr; } }
+/* The floating "Add to minutes" button needs a positioned panel; below 1024px the panel isn't sticky. */
+@media (max-width: 1024px) { .transcript-panel { position: relative; top: auto; } }

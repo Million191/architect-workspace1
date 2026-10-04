@@ -16,7 +16,9 @@ export interface OutputTag {
 // 'mp4' is here because Microsoft Teams cloud recordings are always delivered as an MP4
 // container (video + AAC audio track) — there's no separate audio-only export like Zoom's
 // M4A recording type. Rejecting mp4 would mean Teams ingestion could never succeed.
-export const SUPPORTED_AUDIO_FORMATS = ['mp3', 'wav', 'm4a', 'mp4'] as const;
+// 'webm' and 'ogg' are what browsers' MediaRecorder produces (Chrome/Edge/Firefox) when a meeting is
+// recorded live in the app; Safari produces 'mp4'. Local Whisper (faster-whisper → PyAV) decodes all three.
+export const SUPPORTED_AUDIO_FORMATS = ['mp3', 'wav', 'm4a', 'mp4', 'webm', 'ogg'] as const;
 export type SupportedAudioFormat = (typeof SUPPORTED_AUDIO_FORMATS)[number];
 
 export interface IngestedAudio {

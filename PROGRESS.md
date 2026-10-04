@@ -2566,3 +2566,713 @@
     in testing by writing payloads to scratch files and piping from the file instead of
     inlining that text in the Bash command, and used the Edit tool rather than a Bash
     heredoc to write this very entry for the same reason (it also names that phrase).
+
+- [x] Add circuit breaker + composed reliability wrapper for audioIngestion external calls
+  - Date: 2026-09-26
+  - Session: CC-20260926-v6qz
+  - What changed: Added `backend/src/services/audioIngestion/circuitBreaker.ts` (a
+    `CircuitBreaker` class with closed/open/half_open states, configurable
+    `failureThreshold` and `cooldownMs`, single-probe half-open gating so concurrent
+    callers don't all spend their own timeout re-discovering a down upstream, and an
+    `onStateChange` hook for logging/metrics), a new `CircuitOpenError` in `errors.ts`,
+    and `withReliability.ts` composing the breaker AROUND the existing
+    `withTimeoutAndRetry.ts` so one fully-retried operation counts as exactly one breaker
+    outcome (not `maxAttempts` of them). This was the missing piece: timeout+retry
+    already existed here and is used by `transcriptionService.ts`, but no circuit
+    breaker existed anywhere in the backend.
+  - Verification: `npm run typecheck` (backend) passes clean. `npx jest
+    src/services/audioIngestion src/services/transcription` — 14 suites, 107 tests, all
+    passing, no regressions. New coverage: `circuitBreaker.test.ts` (8 tests: starts
+    closed, trips after `failureThreshold` consecutive failures, rejects without calling
+    the operation while open, waits the full `cooldownMs` before probing, a successful
+    probe closes it, a failed probe reopens and restarts the cooldown, only one probe
+    runs at a time under concurrent callers, `onStateChange` fires only on real
+    transitions) and `withReliability.test.ts` (4 tests, including the key composition
+    behavior: an exhausted retry only trips the breaker's failure count by 1).
+  - Notes: Not yet wired into a real client (`meetClient.ts`/`zoomClient.ts`/
+    `teamsClient.ts`) — this session's ask was the reusable module + explanation, not an
+    integration; wiring it into a specific client is a natural next step if requested.
+
+- [x] Add idempotent user profile update demo to reliability-lab
+  - Date: 2026-09-26
+  - Session: CC-20260926-v6qz
+  - What changed: Added `reliability-lab/profile.js` (`applyProfileUpdate`, a pure
+    field-assignment merge that is idempotent by construction since every field is a "set"
+    never a delta; `updateUserProfile`, which wraps it in the existing `runOnce` idempotency
+    helper keyed on `(userId, requestId)` so a retried request doesn't re-stamp `updatedAt`
+    or append a duplicate audit event), `reliability-lab/profileDesk.js` (CLI: `update
+    <userId> <requestId> <json-updates>` / `show <userId>`), and
+    `reliability-lab/check-profile-idempotency.js` (plain-script test, no framework, exits
+    non-zero on failure, matching this folder's existing `check-idempotency.js` pattern).
+    Wired into `reliability-lab/package.json`: `npm test` now runs both checks; added
+    `test:profile` and `profile` convenience scripts.
+  - Verification: `npm test` (reliability-lab) — both check scripts pass: order-confirm
+    idempotency (pre-existing) and the 3 new profile checks (pure-function convergence,
+    same-requestId dedup across 3 calls with 1 audit event and unchanged `updatedAt`,
+    different-requestId-same-values converges on data fields while still logging a new
+    event). Also manually ran `node profileDesk.js update demo-user req-1 '{"name":"Alan
+    Turing","email":"alan@example.com"}'` three times by hand: first call `duplicate:
+    false`, next two `duplicate: true`, stored profile byte-identical (including
+    `updatedAt`) across all three.
+  - Notes: `data/` in this folder is gitignored (scratch state), so `profiles.json` and
+    `profile-events.jsonl` are not committed — consistent with the existing `sent.log`/
+    `keys.json`/`breaker.json` files already in that folder.
+
+- [x] Add quality-gate evaluation script for a batch of AI-generated outputs
+  - Date: 2026-09-26
+  - Session: CC-20260926-v6qz
+  - What changed: Added `reliability-lab/evaluate-outputs.js`, which runs `vendor.js`'s
+    stand-in AI outputs (`ok`/`garbage` modes) across 5 order ids each through the
+    existing `scoreBreakdown()`/`QUALITY_THRESHOLD` from `reliability.js` (Accuracy =
+    exact order id present, Safety = no disclaimer/refusal phrase, Relevance = length
+    envelope), then adds the two axes that gate doesn't measure on its own: a
+    Consistency check (same input run 5x, are scores stable?) and Performance (latency
+    per call), plus a simulated User Feedback proxy (auto-accept / accept-with-edit /
+    reject bucketed from score) standing in for real reviewer disposition data. User
+    asked to evaluate a batch of outputs against the quality gate criteria defined
+    earlier in this session and discuss production-deployment implications; there is no
+    "Claude Studio" tool available in this environment (confirmed via ToolSearch — no
+    matching tool exists), so this script + a direct LLM-judge write-up substituted for
+    it, per the user's explicit choice when asked.
+  - Verification: `node evaluate-outputs.js` — ran live. `ok` mode: 5/5 pass (score 100,
+    avg latency 58ms). `garbage` mode: 0/5 pass (scores 30-60, avg latency 58ms).
+    Consistency: `ok` stable across 5 runs (100 every time); `garbage` unstable (scores
+    swing 30/60 run to run depending on which garbage variant `vendor.js` randomly
+    picks) — output pasted in the session write-up.
+  - Notes: This is a demonstration harness over the repo's existing stand-in vendor, not
+    a real production output stream — it shows the gate mechanics and what the resulting
+    data would inform, not a claim about any real model's actual output quality.
+
+- [x] Connect the meeting workflow end to end + one review page
+  - Date: 2026-10-03
+  - Session: CC-20261003-q4tz
+  - What changed: Added `backend/src/services/meetingPipeline/` (orchestrator wiring the
+    existing services in order: physical audio ingestion → transcription → diarization/
+    speaker mapping → meeting summary → segment marking → discussion summary → decisions →
+    action items → STOP at Gate #1; then approve → email drafting → STOP at Gate #2; then
+    approve → send each email once → action-item tracker "Not Started"). Added
+    `backend/src/routes/meetingPipeline.ts` (`POST /api/meetings/draft`, `GET /:runId`,
+    `POST /:runId/approve-minutes`, `POST /:runId/approve-emails`, Zod-validated), a single
+    static page `backend/public/index.html` (upload box, draft minutes with decisions and
+    action items, Approve button), `server.ts` wiring, and `npm run dev:demo`.
+    Files: meetingPipeline/{types,errors,auditLog,runStage,draftMinutes,
+    meetingPipelineService,demoProviders,meetingPipelineService.test}.ts,
+    routes/meetingPipeline{,.test}.ts, public/index.html, server.ts, package.json.
+  - Verification: `npx jest` — 33 suites / 286 tests pass (11 new: happy path, both gates
+    blocking out-of-order steps, replay/concurrent double-approve sends once, failed send
+    resumes only remaining recipients, stage-named provider failure, 400/404/409/422/503
+    route cases, page served). `tsc --noEmit` passes. Live run of `ts-node src/server.ts
+    --demo-providers` driven over HTTP: draft → early send refused 409 → approve minutes →
+    personalized emails → approve emails → sent to 2, 2 action items tracked.
+  - Notes: ESCALATION OPEN — no real provider exists for speech-to-text, diarization,
+    topic/decision/action-item extraction, mail delivery, or the tracker (each service's
+    types.ts already flags these as paid-external-dependency decisions). Only clearly
+    labelled demo providers are wired (sample content regardless of upload; nothing is
+    actually emailed; page shows a demo banner). Without `--demo-providers` the API answers
+    503. Attendees also carry no email addresses yet. Assumptions: uploads go through the
+    physical-ingestion path (room_mic default); speaker names are prefixed onto segment text
+    before extraction so owners/approvers can be attributed; sends use 1 attempt (no auto
+    retry, to avoid duplicates) and resume on re-approval; all state is in-process memory
+    like the wrapped services.
+
+- [x] Real meeting workflow, stage 1: real recording → local Whisper → Claude analysis → draft in UI
+  - Date: 2026-10-04
+  - Session: CC-20261003-q4tz
+  - What changed: Added real providers under `backend/src/services/meetingPipeline/providers/`
+    (`whisperTranscriptionClient.ts` spawning new `meeting-assistant/whisper_transcribe.py`
+    via `uv`, no shell; `claudeAnalysisClient.ts` using the official `@anthropic-ai/sdk` with
+    `claude-sonnet-5-5`, JSON-schema structured output, one memoized call per transcript,
+    line-index evidence mapped to real timestamps, blanks never filled; `realProviders.ts`
+    startup/config checks; `providerErrors.ts`). `npm run dev` is now real mode; sample data
+    only via explicit `npm run dev:demo`. Pipeline refuses a phase with
+    `ProviderNotConfiguredError` (HTTP 503 listing each missing item) instead of falling back;
+    per-stage timeouts/attempts for slow providers; server request timeout raised to 45 min.
+    Page shows provider status on load, blocks upload when misconfigured, shows transcript
+    evidence per decision/action item. `npm audit fix` cleared prod CVEs in multer/qs.
+  - Verification: `RUN_WHISPER_TEST=1 npx jest` — 35 suites / 296 tests pass (incl. real
+    Whisper on sample-standup-recording.wav); `tsc --noEmit` passes; `npm audit --omit=dev`
+    0 vulnerabilities. Live run of `npm run dev` on :3000: sample WAV and an MP4 built from it
+    both → real transcript → Claude draft (1 decision; Priya's contract item with "by Friday"
+    left as no due date; legal follow-up left ownerless — both flagged). Approve minutes →
+    2 emails drafted; approve emails → 503 "SMTP sending is not connected yet".
+  - Notes: Stage 2 (SMTP, `Name <email>` attendees, JSON tracker, AssemblyAI diarization) not
+    started — waiting on the user's browser test of stage 1. Assumption: new action items get
+    status "open" (not inferred content). Claude call opts into the server-side refusal
+    fallback (`fallbacks: "default"`).
+
+- [x] Real meeting workflow, stage 2: SMTP sending + local JSON action-item tracker
+  - Date: 2026-10-04
+  - Session: CC-20261003-q4tz
+  - What changed: Added `providers/smtpEmailClient.ts` (nodemailer; exact missing-variable
+    report for SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS/MAIL_FROM; optional
+    SMTP_ALLOWED_RECIPIENTS safety list; explicit connection/greeting/socket timeouts; classified
+    errors that never echo credentials), `providers/jsonActionItemTracker.ts`
+    (backend/data/action-items.json, atomic writes), and `jsonFileMap.ts` so the sent-email log,
+    tracker log, and attendee addresses persist in backend/data/ (gitignored) and the
+    duplicate-send guard survives restarts. Attendees accept `Name <email>` (parsed and validated
+    in the route); the pipeline checks every pending recipient has an address and passes the
+    allowlist BEFORE recording Gate #2, so a problem never half-sends. Page shows To: addresses,
+    per-email sent status, send-config problems on load, and a confirm dialog listing real
+    recipients before sending. `npm run dev` loads an optional gitignored backend/.env.
+  - Verification: `RUN_WHISPER_TEST=1 npx jest` — 37 suites / 309 tests pass (SMTP tests use a
+    fake transport — no real email sent); `tsc --noEmit` passes; `npm audit --omit=dev` 0
+    vulnerabilities. Live on :3000 without SMTP vars: real draft → approve minutes → approve
+    emails answered 503 naming the five missing variables; run stayed at
+    emails_pending_approval with nothing sent.
+  - Notes: No real email was sent (user asked to approve the first real send). AssemblyAI
+    diarization still not built. Known gap: a crash between a successful SMTP send and the
+    sent-log write could repeat that one email on replay.
+
+- [x] Document SMTP settings in backend/.env.example
+  - Date: 2026-10-04
+  - Session: CC-20261003-q4tz
+  - What changed: Added the SMTP_* / MAIL_FROM / SMTP_ALLOWED_RECIPIENTS block to
+    `backend/.env.example`. Also created the user's local gitignored `backend/.env` with Gmail
+    settings and an empty SMTP_PASS for the user to fill in (not committed).
+  - Verification: `git check-ignore backend/.env` confirms it is ignored; server not restarted
+    yet so the user's in-memory draft is preserved.
+
+- [x] Draft-only email mode (default): final approval records + tracks, never sends
+  - Date: 2026-10-04
+  - Session: CC-20261003-q4tz
+  - What changed: Added `EmailMode` ('send' | 'draft-only') to the pipeline. Real mode is
+    draft-only unless `EMAIL_MODE=smtp` (then all SMTP_* vars are required); no SMTP
+    credentials needed or read otherwise. In draft-only, Gate #2 is still required: approving
+    it records a persisted `FinalApprovalRecord` (backend/data/final-approvals.json), logs
+    action items to the JSON tracker as "Not Started", and never calls the delivery client
+    (which itself refuses if ever called). New stage `approved_not_sent`; missing addresses do
+    not block. Page shows "Email sending disabled — draft only." banner, every draft email
+    open with "Would be sent to …" and full To/Subject/body, final-approval button labelled
+    draft-only, and an "Approved — not sent" summary. User's `backend/.env` reset to
+    `EMAIL_MODE=draft-only` with no SMTP values; `.env.example` documents EMAIL_MODE.
+    Claude prompt now also keeps tasks the meeting says still need doing with no owner.
+  - Verification: `RUN_WHISPER_TEST=1 npx jest` — 38 suites / 313 tests pass (new
+    draftOnlyMode.test.ts: delivery client is a throwing spy, never called; replay/concurrent
+    final approval records once); `tsc --noEmit` passes. Live run on a throwaway data dir
+    (port 3019): sample WAV → draft → approval 1 → emails (Priya with address, Million
+    without) → approval 2 → `approved_not_sent`, sentTo [], 1 action item tracked, 0
+    `smtp_email_sent` log lines. After the prompt fix, the sample yields both action items
+    (Priya's, and the ownerless legal follow-up). Server back on :3000 in draft-only mode.
+  - Notes: A run approved in draft-only stays "approved — not sent" even if sending is turned
+    on later (no retroactive sending).
+
+- [x] Never infer gender or pronouns in generated minutes
+  - Date: 2026-10-04
+  - Session: CC-20261003-q4tz
+  - What changed: Added `providers/genderedLanguage.ts`: `NEUTRAL_LANGUAGE_RULE` (now part of
+    the Claude system prompt — use stated names, roles, speaker labels, or they/them; gendered
+    pronouns/honorifics only when the transcript itself uses them) and a deterministic check,
+    `findUnsupportedGenderedTerms`, over every generated topic title/summary, decision,
+    rationale, and action item. On unsupported gendered words the Claude client retries once
+    with a named correction; if they persist, the draft fails with `UngroundedGenderedLanguage`
+    instead of showing them. Email drafts are built only from the checked minutes plus a
+    neutral template.
+  - Verification: `RUN_WHISPER_TEST=1 npx jest` — 39 suites / 322 tests pass (new
+    genderedLanguage.test.ts: "introduces himself as Milen" flagged; neutral wording passes;
+    transcript-supported "she" allowed; retry-then-accept and retry-then-fail; action items
+    checked; email drafts contain no unsupported gendered words); `tsc --noEmit` passes.
+    Live real draft of the sample recording on :3000: summaries use "an unidentified
+    speaker"/"the speaker", no gendered words.
+  - Notes: Support is checked per word family across the whole transcript, not per person (no
+    speaker identity exists to do better); documented in the module header.
+
+- [x] Keep the draft email visible after final approval (draft-only)
+  - Date: 2026-10-04
+  - Session: CC-20261003-q4tz
+  - What changed: Root cause — the approved email batch lived only in the in-memory Gate #2
+    store, so after a server restart a re-uploaded, already-approved recording showed
+    "Approved — not sent" with no draft. `FinalApprovalRecord` now also saves the approved
+    batch and the recipient addresses (backend/data/final-approvals.json); `getRun` falls back
+    to them. Page script moved to `backend/public/app.js`; the page now shows "Draft Email"
+    (collapsible, open by default: Recipient name <email>, Subject, complete body, Status
+    "Draft only — not sent") followed by "Final Approval" (Approved by, Approval date/time,
+    Status "Approved — not sent"). An approval saved before this change shows an explicit
+    "draft was not saved" note instead of nothing. Added dev dependency
+    `jest-environment-jsdom@29` for the page test.
+  - Verification: `RUN_WHISPER_TEST=1 npx jest` — 40 suites / 325 tests pass (new
+    reviewPage.test.ts runs the real app.js in jsdom: after final approval with zero decisions
+    and zero action items, the full draft, its status, and the final-approval block render,
+    draft precedes approval and still collapses; draftOnlyMode.test.ts: emails kept after
+    approval and after a simulated restart). `tsc --noEmit` passes; prod audit 0. Server
+    restarted on :3000 (draft-only); page and app.js serve 200.
+
+- [x] Approved meetings persist as full records across page refresh and server restart
+  - Date: 2026-10-04
+  - Session: CC-20261003-q4tz
+  - What changed: The final-approval record (backend/data/final-approvals.json) now also saves
+    the approved minutes and the speaker-labelled transcript alongside the approved email batch
+    and recipients. `getRun` serves approved meetings from that record when nothing is in
+    memory; re-uploading an approved recording reopens the record without calling Whisper or
+    Claude; repeated approvals on a saved record are no-ops. The page keeps `?run=<id>` in the
+    address bar and reloads that meeting on refresh (clear message if a not-yet-approved draft
+    was lost to a restart). Draft-only mode unchanged; nothing is sent.
+  - Verification: `RUN_WHISPER_TEST=1 npx jest` — 40 suites / 328 tests pass (new: pipeline
+    reload after restart with no upload + no re-transcription + no send; API GET after restart
+    returns the approved draft; page reopens `?run=` and shows the saved draft and approval).
+    `tsc --noEmit` passes. Live: approved the sample on a throwaway-data server (:3019),
+    restarted it, `GET /api/meetings/:id` → 200, approved_not_sent, Priya's draft (623 chars),
+    8 transcript lines, with 0 Whisper/Claude/SMTP calls after restart. Main server restarted on
+    :3000 in draft-only mode.
+  - Notes: Meetings not yet approved are still memory-only and are lost on restart (by design
+    for now). The one meeting approved before drafts were saved still cannot show its draft.
+
+- [x] Fix: draft email hidden for a re-uploaded recording with an older approval record
+  - Date: 2026-10-04
+  - Session: CC-20261003-q4tz
+  - What changed: Root cause (from the running app's logs + backend/data): meetings are keyed by
+    the audio's SHA-256, and the user's "new" meetings (02:03Z, 02:08Z) were the same audio as a
+    meeting approved at 01:43Z, before drafts were saved. That incomplete approval record plus
+    its tracker entry made `getRun` report `approved_not_sent` for the fresh run, so the page hid
+    the Approve button; "approve minutes" was never called, so no draft was ever created (logs:
+    no email-drafting events). Fix in `meetingPipelineService.getRun`/final approval: only a
+    COMPLETE saved record (minutes + transcript + emails) can mark a meeting approved or supply
+    its final-approval details; an incomplete one is ignored for display and replaced by the next
+    final approval. Page labels the draft fields To / Subject / Body. Added dev deps `jsdom@20`,
+    `@types/jsdom@20` for the end-to-end test.
+  - Verification: new `draftEmailFlow.integration.test.ts` (real app + real pipeline + real
+    app.js in jsdom, fetch wired to the app): draft created; API returns it; To/Subject/Body
+    shown before final approval, unchanged after it with Approved by / date-time / "Approved —
+    not sent" below; shown again after a simulated restart + page refresh; delivery spy and
+    nodemailer.createTransport never called. Regression case seeds the exact legacy record —
+    confirmed it FAILS with the old getRun logic and passes with the fix. Full suite
+    `RUN_WHISPER_TEST=1 npx jest` 41 suites / 330 tests pass; `tsc --noEmit` passes. Restarted
+    :3000; live sample upload → approve minutes → emails_pending_approval with Priya's draft
+    (Subject "Recap and action items: Live check", 582 chars); 0 smtp sends.
+  - Notes: Tracker dedupe still keys on the run id, so action items logged by the old approval
+    are not re-logged when the same recording is approved again.
+
+- [x] Redesign the Meeting Assistant demo UI into a 5-step review dashboard
+  - Date: 2026-10-04
+  - Session: CC-20261003-q4tz
+  - What changed: Rebuilt `backend/public/` as `index.html` + `styles.css` + `ui.js` (rendering
+    helpers) + `app.js` (state/requests/events): header with "Meeting Assistant" title, subtitle,
+    and mode badge ("● Draft-only mode — emails are not sent"); 5-step stepper (✓ done,
+    highlighted current, aria-current); drag-and-drop upload card (formats, selected filename,
+    title, attendees Name <email>, reviewer, "Generate Meeting Minutes"); processing card with
+    real server-reported phases + elapsed clock (no percentages); minutes as cards (summary with
+    timestamps, decisions each with evidence, action-items table Task/Owner/Due date/Status with
+    "Not stated" instead of invented values, collapsible "View full transcript"); email shown as
+    an email preview (To/Subject/body, "DRAFT — NOT SENT" badge); completion card ("Meeting review
+    complete", checklist, "Email sent: No — Draft-only mode", approved by/time) with the email
+    draft kept underneath. Backend addition for real progress only: `uploadProgress.ts` tracker,
+    optional `uploadId` form field, `GET /api/meetings/progress/:uploadId`, and an optional
+    `onProgress` hook in `draftMinutes` (stages run exactly as before).
+  - Verification: `RUN_WHISPER_TEST=1 npx jest` — 42 suites / 333 tests pass (page + end-to-end
+    tests updated to the new labels/layout; new uploadProgress.test.ts and progress route test);
+    `tsc --noEmit` passes. Restarted :3000; `/`, `/styles.css`, `/ui.js`, `/app.js` serve 200;
+    live sample upload reported progress transcribing → analyzing → done and returned a draft.
+
+- [x] Five-step Meeting Assistant UI (one stage at a time)
+  - Date: 2026-10-04
+  - Session: CC-20261003-q4tz
+  - What changed: Replaced the single-page dashboard with an app shell + one-screen-at-a-time
+    flow in `backend/public/`: `index.html` (header, "Draft-only mode" badge with tooltip, stepper,
+    view area, sticky action bar), `styles.css` (new visual system, responsive, reduced-motion),
+    `js/state.js` (single store), `js/api.js` (wrappers over existing endpoints), `js/components.js`,
+    `js/views/{upload,processing,review,email,complete}.js`, `js/app.js` (navigation, ?run=&view=,
+    double-submit guard, retry). Upload: drop zone → file card (type/size, Change/Remove), CTA
+    disabled until ready, hint for attendees entered as a bare email. Process: six display stages
+    mapped to real server stages, failed stage + Retry/Edit details keeping all inputs. Review:
+    meeting info card, summary, decisions, action items (Not specified), collapsed transcript,
+    "Human approval #1 of 2". Email: realistic preview, attendee tabs (arrow keys), "DRAFT ONLY •
+    NOT SENT", "Human approval #2 of 2". Complete: success hero, checklist, "Not sent — Draft-only
+    mode", approver/time/action-item count, View Minutes / View Email / Start New Meeting. Old
+    `public/app.js`, `public/ui.js` removed. No backend changes; email template unchanged.
+    Test harness `src/routes/__testutils__/pageHarness.ts` (excluded from tsc build).
+  - Verification: new `meetingAssistantUi.integration.test.ts` (real page scripts in jsdom + real
+    Express app + pipeline): full journey with Back preserving state, stepper navigation, one
+    request per double-clicked submit/approval, attendee tabs incl. keyboard, read-only
+    revisits, completion facts, draft visible after completion and after server restart + refresh,
+    no delivery/nodemailer calls; failure → "Transcribing meeting — failed" → Edit details keeps
+    inputs → retry succeeds; bare-email hint; legacy-record regression. Replaced reviewPage.test.ts
+    and draftEmailFlow.integration.test.ts. `RUN_WHISPER_TEST=1 npx jest` 41 suites / 332 tests
+    pass; `tsc --noEmit` passes. Restarted :3000; all 11 page assets serve 200.
+  - Notes: Not visually inspected in a real browser in this session (no browser tool available).
+
+- [x] Linear/Notion-style redesign: app shell, design tokens, 7 screens (+3 read/edit endpoints)
+  - Date: 2026-10-04
+  - Session: CC-20261003-q4tz
+  - What changed: Frontend rebuilt in `backend/public/` on the same no-build stack:
+    `styles/tokens.css` (all colours/spacing/radius/type/motion; light + dark via
+    prefers-color-scheme or Settings), `styles/{base,layout,screens}.css`, self-hosted Inter
+    (`fonts/InterVariable.woff2`, OFL licence file alongside), Lucide outline icons inlined in
+    `js/core/icons.js`. Shell: sidebar (Meetings, Action items, Settings, draft-only pill), top bar
+    search + ⌘K/Ctrl+K command palette + reviewer-initials avatar, toasts. Screens: Meetings
+    dashboard (stat cards, table with status badges, empty/no-match states), Upload (drag-drop,
+    in-browser recording encoded to 16 kHz WAV in `js/core/audio.js`, file card, validation
+    copy), Processing (real byte progress via XHR + server stages, skeletons, Try again), Review
+    (transcript left with clickable timestamps; editable summary/decisions/action items with
+    done checkbox, owner, due date; autosave with Saved indicator; approval 1 of 2), Send
+    confirmation (recipient list + email preview; "Approve (draft only)"; approved state keeps
+    the email visible), Action items, Settings (theme, name, connections). Backend additions
+    (approved by user): `meetingQueries.ts` (`GET /api/meetings`, `GET /api/meetings/action-items/all`,
+    read-only) and `minutesEditing.ts` (`POST /api/meetings/:runId/minutes`, Zod-validated, via
+    Gate #1's existing `requestRevision`; recomputes missing-field flags; no-op on identical
+    edits; 409 after approval). Approvals, sending, transcription, analysis unchanged. Fixed
+    two bugs the new tests found: background list refreshes redrew an open review (wiping
+    in-progress edits), and Approve redrew before the last edit was saved.
+  - Verification: `RUN_WHISPER_TEST=1 npx jest` — 42 suites / 337 tests pass, exits cleanly
+    (new meetingQueriesAndEdits.test.ts; meetingAssistantUi.integration.test.ts rewritten:
+    full journey incl. validation, double-click guards, autosave persisted server-side,
+    transcript highlight, recipients incl. keyboard, read-only revisit, draft-only toast,
+    lists, search, ⌘K, dark theme, restart+refresh, no delivery/nodemailer calls; failure +
+    Try again; name required; WAV encoder accepted by the server; legacy regression).
+    `tsc --noEmit` passes. Live on :3000 with real Whisper + Claude: all 20 assets 200; real
+    draft → edit save returned updated due dates → list shows it as Needs review; server then
+    restarted to clear that test draft.
+  - Notes: Checkbox = "done" (user accepted recommendation). Not visually inspected in a real
+    browser in this session. Old `public/js/{state,api,components,app}.js`, `js/views/*`,
+    `styles.css` removed.
+
+- [x] "This week" calendar — server side (all steps) + UI steps a (open/close panel) and b (week & list views)
+  - Date: 2026-10-04
+  - Session: CC-20261003-q4tz
+  - What changed: New `backend/src/services/schedule/` (`types.ts`, `errors.ts`,
+    `scheduleService.ts` — create/update/reschedule/postpone (new time or date TBD)/cancel/
+    restore/delete/single-step Undo/link recording, version checks, locking once a recording is
+    attached, overlap warnings, structured change history; `notifications.ts` — deterministic
+    postponed/cancelled notices, draft-only never sends, per-(meeting,change,recipient) sent log so
+    retries only send what didn't go out). New `routes/schedule.ts` (`/api/schedule` list-by-week,
+    get, create, update, postpone, cancel, restore, undo, delete, notices preview, notify;
+    Zod-validated; http(s)-only links). `/api/meetings/draft` accepts `scheduledMeetingId` (checked
+    before processing; recording attached after). Server stores schedule in
+    backend/data/schedule.json and notice log in schedule-notices.json. Frontend: `styles/calendar.css`,
+    `js/calendar/{model,dialog,weekView,listView,details,panel,controller}.js`; "Meetings this week"
+    card is now an aria-expanded toggle (chevron, accent active border); panel with week grid
+    (Mon–Fri + weekend when needed, 9–5 widened to fit, overlaps side by side, today column + now
+    line, tooltips, faded "Moved to …" outlines, recorded meetings as all-day chips), list view
+    (automatic on narrow screens), prev/next/Today, Week/List, Show changes/Show cancelled, legend,
+    "Postponed, date TBD" list, read-only details popover with change history; Esc/X/card close;
+    session-remembered; shared status vocabulary (`MA.displayStatus`, new `badge-accent`).
+  - Verification: `RUN_WHISPER_TEST=1 npx jest` — 45 suites / 348 tests pass (new
+    scheduleService.test.ts, routes/schedule.test.ts, calendarUi.integration.test.ts); `tsc
+    --noEmit` passes. Restarted :3000; calendar assets 200; `GET /api/schedule` answers for the
+    current week.
+  - Notes: The dashboard loads the current week once for the count (the count needs scheduled
+    meetings), so the panel opens instantly for this week; other weeks load on demand with
+    skeletons. Steps c–h (add, edit/drag, cancel UI, postpone UI, notification UI, upload link UI)
+    not built yet — waiting for the user to try a+b. Weekend columns also appear for recordings
+    dated on a weekend (found live: the user’s Sunday recording would otherwise be hidden).
+
+- [x] "This week" calendar — step c: add meetings (button, click a slot, drag)
+  - Date: 2026-10-04
+  - Session: CC-20261003-q4tz
+  - What changed: `public/js/calendar/form.js` (add/edit form as popover / bottom sheet: title
+    required, date + start + end, participant email chips accepting `Name <email>` with Enter or
+    comma, optional link (http/https) and agenda; inline errors via aria-describedby/aria-invalid;
+    non-blocking overlap warning; single in-flight save) and `addMeeting.js` ("New meeting" = next
+    free half-hour today; click a slot = 30 min at that time; drag across slots = start/end with a
+    live dashed preview; on save: toast "Meeting added" (with overlap note), week reload, count
+    refresh). Week view stays visible when empty so slots can be used. Fixed a duplicate id
+    (`calTitle` used by both the panel heading and the form title) the tests caught.
+  - Verification: `RUN_WHISPER_TEST=1 npx jest` — 45 suites / 350 tests pass (new calendar tests:
+    keyboard path with validation, chips incl. invalid email, save → toast → block → count 0→1;
+    slot click prefill + overlap warning still saveable; drag 1:00–3:00 PM preview + prefill; cancel
+    creates nothing). `tsc --noEmit` passes. Live :3000 serves the new scripts.
+
+## Meeting Assistant upgrades (calendar sync, people, search, spell check, recording, mobile)
+
+- [x] Step a — Meetings header: "View calendar", "Record meeting" menu, mobile "More", search placeholder
+  - Date: 2026-10-04
+  - Session: CC-20261004-k7q2
+  - What changed: new `backend/public/js/core/menu.js` (accessible dropdown: arrows/Home/End/Esc,
+    outside click, focus return, toggle on second click); `screens/meetings.js` header now has
+    "View calendar"/"Hide calendar" (aria-expanded/controls, same toggle as the summary card),
+    "Record meeting" menu (In-person / Online on this computer) and primary "Upload meeting";
+    below 640px the secondary buttons collapse into a 44px "More" menu. `calendar/controller.js`
+    returns focus to whichever control closed the panel; Esc ignores the panel while a menu is
+    open. `app.js` `recordMeeting(mode)`: in-person starts the existing browser recorder; online
+    capture shows an explicit "isn't available yet" toast until step g. Search placeholder/label →
+    "Search meetings, transcripts, or action items". Page header title side now shrinks before
+    the actions wrap.
+  - Verification: new `src/routes/meetingsHeaderUi.integration.test.ts` (4 tests) + existing UI
+    suites pass (13/13); headless Chrome screenshots at 1280px light/dark and 375px — no
+    horizontal scroll (scrollWidth 375), secondary buttons hidden and "More" shown on phone.
+  - Notes: user approved the plan 2026-10-04 (MiniSearch, nspell + dictionary-en, single-user
+    access model for now, direct-REST calendar OAuth with encrypted tokens).
+
+- [x] Step b — Participants with names and avatars; People list
+  - Date: 2026-10-04
+  - Session: CC-20261004-k7q2
+  - What changed: backend `services/people/` (identity.ts: readable name from email, initials,
+    FNV-1a avatar colour from a 10-colour AA palette; peopleService.ts: People directory keyed by
+    lower-cased email, name precedence edited > calendar > typed-with-address > derived, photo
+    edited > calendar, idempotent `observe`), `routes/people.ts` (GET /api/people refreshes from
+    meetings + scheduled meetings; PUT /api/people/:id, zod-validated, https-only photo links,
+    404/503), server wiring (`people.json` in real mode), `MeetingListItem.people` (name + email),
+    `ScheduleService.listAll()`. Frontend `core/people.js` (mirror of identity helpers, resolve,
+    suggestions, avatar with image→initials fallback, avatar stacks of 3 + "+N" with spoken label
+    and a names+emails popover, person chips), `screens/people.js` (People page with filter and
+    per-row name/photo edit), `styles/people.css`; avatars in meetings table, calendar blocks
+    (non-interactive stack), list view, tooltips (name · email), details popover, review header,
+    transcript speakers, action-item owners, send screen; New-meeting participant chips now show
+    avatar + name (email on hover) with a keyboard-operable suggestions list. Page-test harness
+    now forwards PUT/DELETE. Calendar form time inputs no longer overflow.
+  - Verification: new identity.test.ts (incl. server/browser parity + palette contrast ≥ 4.5),
+    peopleService.test.ts, routes/people.test.ts, peopleUi.integration.test.ts; full suite 50
+    suites / 374 passed (1 skipped); `tsc --noEmit` passes; headless Chrome screenshots (desktop
+    light/dark, 375px People page, scrollWidth 375).
+  - Notes: Updated one existing calendar test assertion — chips intentionally show the name only
+    (address on hover). Review/send screens are not redrawn when People loads (would wipe edits).
+    One full-suite run had a single transient failure that did not reproduce in 4 reruns.
+
+- [x] Step c — Mobile layout (cards, bottom navigation, full-screen search, bottom sheets, 44px targets)
+  - Date: 2026-10-04
+  - Session: CC-20261004-k7q2
+  - What changed: new `public/styles/mobile.css`; `shell.js` bottom navigation below 640px
+    (Meetings, Action items, Record → recording menu, Settings; pending-review count; People via
+    Settings → "Manage people" and the command palette) and a full-screen search overlay (focus
+    trap, Esc/Cancel return focus, dialog role only while open); `meetings.js` phone cards (title,
+    date, status badge, avatar stack, platform tag when known; whole card taps open; ⋯ menu with
+    Review/Open + Copy link) while the table stays for wider screens; tablet hides the chevron and
+    (641–860px) participants columns; `actionItems.js` folds the Meeting column under the task on
+    tablet and renders cards on phone; summary cards scroll sideways with snap; calendar list
+    rows restack on phones; bottom sheets get a grab handle and full-width actions; topbar shows
+    brand + search button + avatar; render never steals focus from the phone search.
+  - Verification: new `mobileUi.integration.test.ts` (3 tests); `tsc --noEmit` passes; full suite
+    378 tests: 1 intermittent timeout in the existing upload journey test under CPU load (5s Jest
+    default), then 3 clean runs; raised `testTimeout` to 20s in `backend/jest.config.js`;
+    headless Chrome at 375px: scrollWidth 375 on meetings, calendar, review, people, settings,
+    upload; no visible control under 44px on upload; tablet 800px screenshot checked.
+  - Notes: Recommended and built bottom navigation (4 destinations, Record is a primary phone
+    action) rather than a hamburger. Search overlay results are filled in step d.
+
+- [x] Step d — Grouped, typo-tolerant search (Meetings, Transcripts, Action items)
+  - Date: 2026-10-04
+  - Session: CC-20261004-k7q2
+  - What changed: added dependency `minisearch@7.2.0` (MIT, no transitive deps; approved in the
+    plan). Backend `services/search/` — spelling.ts (tokenizer, bounded OSA edit distance,
+    vocabulary built from titles/names/transcripts/minutes so names and project terms are never
+    corrected), searchDocuments.ts (meetings with participants by name+email, dates as ISO/month/
+    weekday words, minutes text; transcript lines with speaker + time; action items; scheduled
+    meetings), searchService.ts (MiniSearch index synced by content hash — only changed docs are
+    added/replaced/removed on each query, so edits are searchable immediately; prefix matching;
+    "Showing results for X. Search instead for Y" when only the correction has results, "Did you
+    mean X?" when both do, fuzzy fallback otherwise; groups of 3 + totals; snippets; "With …"
+    for participant matches); `routes/search.ts` GET /api/search (zod: q ≤ 200, group, limit
+    1–50, exact). Frontend `core/search.js` (shared by the desktop dropdown and the phone
+    overlay: debounced, stale answers dropped, highlighted matches via text nodes, keyboard
+    combobox with aria-activedescendant, See all / All results, recent searches, empty state,
+    result count announced, Commands group on desktop), `styles/search.css`; Ctrl K / ⌘K now
+    focuses the search box (phones: opens full-screen search; the palette stays on its button);
+    transcript results open the review scrolled to and highlighting that line; scheduled
+    meetings open their details. Dialogs without an anchor open centred instead of as a popover.
+  - Verification: new spelling/search unit tests, routes/search.test.ts (incl. index follows a
+    minutes edit), searchUi.integration.test.ts; full suite 401 passed (1 skipped); `tsc
+    --noEmit` passes; headless Chrome: "budjet" → "Showing results for budget", grouped results
+    with highlights (light/dark), phone overlay "timline" → timeline, scrollWidth 375.
+  - Notes: Updated two existing tests to the new search behaviour (journey test: search dropdown
+    + Ctrl K → search Commands instead of list filtering + palette; mobile overlay test). The
+    meetings list no longer filters as you type — results live in the dropdown.
+
+- [x] Step e — Spell check while writing, team dictionary, check before approval
+  - Date: 2026-10-04
+  - Session: CC-20261004-k7q2
+  - What changed: added `nspell@2.1.5` (MIT) + `dictionary-en@4.0.0` (MIT AND BSD) and dev
+    `@types/nspell@2.1.6` (approved in the plan). Backend `services/spelling/spellChecker.ts`
+    (Hunspell-compatible checking; reports words + offsets + up to 5 suggestions, never edits;
+    skips URLs, emails, @mentions, code, acronyms, words glued to digits; suggestion cache; reads
+    dictionary-en's .aff/.dic directly so the CommonJS server needs no ESM interop),
+    `teamDictionary.ts` (idempotent add/remove, `team-dictionary.json` in real mode; automatic
+    words from participant names and meeting titles), `routes/spelling.ts` (POST /api/spellcheck
+    batch, GET/POST/DELETE /api/spellcheck/dictionary, zod-validated, 503 if the dictionary is
+    missing). Frontend `core/spellcheck.js`: transparent mirror layer draws red wavy underlines
+    over inputs/textareas (browser spellcheck turned off on those fields to avoid doubles), batched
+    requests, click → suggestions without stealing focus, right-click/menu key → keyboard menu,
+    Ignore (session), Add to dictionary (team), a hidden per-field description for screen
+    readers; attached to review topics/summaries/decisions/reasons/action-item tasks, the upload
+    meeting title, and the calendar form title + agenda; transcripts are never checked. Approving
+    minutes and approving/sending emails now first shows "N possible spelling mistakes — Review /
+    Approve anyway (Send anyway)"; Review approves nothing and focuses the first flagged field;
+    if the checker is down the approval continues with a toast. Email previews underline
+    possible mistakes without changing the email text. `MA.menu.open` gained `{ focus: false }`.
+  - Verification: spellChecker.test.ts, routes/spelling.test.ts, spellcheckUi.integration.test.ts
+    (underline → suggestion applied only when chosen → autosaved; Ignore; Add to dictionary;
+    gate Review/Approve anyway; email preview underline); full suite 414 passed (1 skipped);
+    `tsc --noEmit` passes; headless Chrome: underlines align with text on desktop and 375px dark.
+  - Notes: Cancel/postpone reason fields don't exist in the UI yet (calendar steps from session
+    CC-20261003-q4tz not built); `MA.spell.attach(field)` is the one-line hook when they land.
+    Minutes are locked after approval 1, so the email check's "Review" points at the preview.
+
+- [x] Step f — Live in-person recording, chunked upload, offline/crash recovery
+  - Date: 2026-10-04
+  - Session: CC-20261004-k7q2
+  - What changed: backend `services/recording/` (types, `recordingStore.ts` — per-recording folder
+    with meta.json + numbered chunk files, atomic writes, streamed join; `recordingService.ts` —
+    idempotent create (consent required, MediaRecorder type allowlist), idempotent chunk PUTs
+    (out of order and retries OK, size/range limits), finish = verify every chunk (409 lists
+    missing ones) → join → same pipeline as uploads; ready → returns the same meeting, concurrent
+    finish refused, failed → retryable; raw-audio retention after approval / 30 days / keep,
+    deleting audio only and idempotently), `routes/recordings.ts` (POST /, GET /:id, PUT
+    /:id/chunks/:n raw ≤ 8 MB, POST /:id/finish, GET /by-run/:runId, DELETE /:id, GET/PUT
+    /settings/retention; zod; links to a calendar meeting), shared upload-progress tracker so the
+    processing screen works for recordings, hourly + startup retention job (default 30 days),
+    audio ingestion now accepts WebM and Ogg by magic bytes (what browsers record; faster-whisper
+    decodes them), `attendeesSchema` exported for reuse. Frontend `core/chunkQueue.js` (IndexedDB
+    store of unsent chunks with in-memory fallback, ordered uploader with 30s timeouts, capped
+    backoff 1–30s, resumes on `online`), `core/recorder.js` (MediaRecorder 5s chunks, mic picker +
+    level meter, pause/resume, Screen Wake Lock, plus tab-audio capture mixed with the mic for
+    step g, clear permission/unsupported messages), `screens/record.js` (setup with required
+    consent checkbox, title/participants, mic check, "middle of the table" tip; recording screen
+    with large timer, Recording/Paused indicator, level meter, Pause/Resume, Add marker, Stop,
+    live upload status), `recordActions.js` (tab title "● Recording – mm:ss", leave-page warning,
+    announcements, Stop → Uploading → Transcribing → Drafting → review, recovery banner on
+    Meetings with Upload and process / Discard, retry), always-visible recording pill on other
+    pages, markers shown inside the review transcript, Settings → Recording and privacy
+    (retention), `styles/record.css`, pause/play icons. The upload page's Record button now opens
+    the new recorder.
+  - Verification: recordingService.test.ts, routes/recordings.test.ts, audio sniffer test,
+    recordingUi.integration.test.ts (faked media: consent gate, chunks, network drop → retrying →
+    recovered, pause, marker, leave/return via pill, Stop → review with marker; crash recovery →
+    processed); full suite 430 passed (1 skipped); `tsc --noEmit` passes. Real headless Chrome
+    with fake mic at 375px: real MediaRecorder `audio/webm;codecs=opus`, chunks uploaded, page
+    navigated away mid-recording, recovery banner after reload, Upload and process → review with
+    marker; local Whisper decoded the joined 15.06 s WebM (no speech — fake tone).
+  - Notes: Access is still single-user (approved): "visible only to the owner and approved
+    participants" needs sign-in, planned after Phase 1. Optional live transcription while
+    recording was not built (local Whisper here is batch, not streaming).
+
+- [x] Step g — Online meeting capture on this computer; "Start recording" from calendar meetings
+  - Date: 2026-10-04
+  - Session: CC-20261004-k7q2
+  - What changed: `core/recorder.js` captures the meeting tab/window audio (getDisplayMedia with
+    audio, video track dropped) mixed with the microphone; refuses with a clear message when no
+    audio was shared ("turn on Share tab audio"; Mac windows can't share sound), explains
+    unsupported browsers/phones/Safari, warns after 20 s of silence from the shared tab and
+    clears the warning when sound arrives, stops and processes if sharing ends or the mic is
+    unplugged; exposes live levels. `screens/record.js` adds step-by-step "How it works" for
+    online capture with Mac vs Windows notes. New `calendar/recordFromCalendar.js`: meetings are
+    recordable from 5 minutes before start until the end (scheduled, not cancelled, no recording
+    yet); "Start recording" menu in the meeting details and in a new "Happening now" banner on
+    the Meetings page (refreshes every minute; platform from the link — Zoom/Teams/Meet → online
+    capture first, in person as the alternative); the recording carries the meeting's title and
+    participants and is linked to it. Menus now stack above dialogs.
+  - Verification: recordingUi.integration.test.ts (+2: banner → Start recording → online setup
+    prefilled → no-audio share refused → capture → stop → review → schedule linked, recording mode
+    browser_capture; 5-minute window rules), recordings.test.ts (recording appears in search);
+    full suite 432 passed (1 skipped); `tsc --noEmit` passes. Real headless Chrome with tab
+    capture auto-selected: real tab + mic capture recording, chunks on the server, silent-tab
+    warning shown at 20.0 s (first attempt exposed a reset bug in the silence timer — fixed).
+
+- [x] Step h — Calendar sync: Google Calendar and Microsoft Outlook (read-only, server-side OAuth)
+  - Date: 2026-10-04
+  - Session: CC-20261004-k7q2
+  - What changed: backend `services/calendarSync/` — `tokenCrypto.ts` (AES-256-GCM sealing with
+    TOKEN_ENCRYPTION_KEY; refuses to connect without it), `http.ts` (15 s timeouts, ≤ 3 attempts
+    with backoff on 429/5xx/network, classified AuthError/RateLimit/Upstream/Timeout/Contract
+    errors, redacted error logging), `providers.ts` (Google Calendar v3 and Microsoft Graph via
+    plain fetch — auth URL with PKCE + one-time state, code exchange, refresh keeping the refresh
+    token, account, calendar list, events/calendarView with paging, Outlook attendee photos,
+    Google revoke), `meetingLinks.ts` (Zoom/Teams/Meet detection from conference data, location,
+    or description), `calendarSyncService.ts` (next 4 weeks; skips all-day always and solo events
+    by default; rooms excluded; upsert by provider + event id — time changes reschedule,
+    cancellations and deletions show as Cancelled, unchanged events untouched; attendee names
+    into People with calendar precedence; Outlook photos saved under data/photos and served by
+    hash; choose calendars/filters; disconnect revokes, deletes tokens, removes synced meetings
+    without a recording; concurrent syncs share one run; errors recorded with needsReconnect),
+    `routes/calendarSync.ts` (GET /connections, GET /oauth/:provider/start → 302, GET
+    /oauth/:provider/callback → back to Settings with result, PUT /connections/:provider, POST
+    /sync, DELETE /connections/:provider; zod; tokens never in responses), photo route,
+    `ScheduleService.upsertExternal/listExternal/removeExternal`, synced meetings locked against
+    local edits ("change it in Google Calendar"), schedule responses include `platform`. Frontend
+    `calendar/sync.js`: Settings → Integrations (Connect, "Connected as … · Last synced …",
+    calendars to sync, skip-solo filter, Sync now, Disconnect, reconnect prompts), "Sync calendar"
+    / "Last synced …" + sync button in the calendar panel header, "Google"/"Outlook" synced tags
+    on blocks and list rows, tooltip and details lines, auto-sync on open when stale and every
+    15 minutes, toasts for the OAuth result. `.env.example` + new `docs/CALENDAR_SYNC_SETUP.md`.
+  - Verification: calendarSync.test.ts (11: crypto, links, mapping, OAuth/PKCE/state, import +
+    filters + idempotent re-sync, reschedule/cancel/delete, refresh + retry + revoked, calendar
+    choice, disconnect, not configured, Outlook photos), routes/calendarSync.test.ts (5),
+    calendarSyncUi.integration.test.ts (3); full suite 451 passed (1 skipped) — one intermittent
+    timing failure in peopleUi under load in 1 of 8 runs, hardened by waiting for suggestions;
+    `tsc --noEmit` passes. Live server with placeholder client ids: /oauth/google/start and
+    /oauth/microsoft/start 302 to accounts.google.com / login.microsoftonline.com with PKCE;
+    Settings and panel screenshots checked.
+  - Notes: Not tested against real Google/Microsoft accounts — needs the user's OAuth clients
+    (see docs/CALENDAR_SYNC_SETUP.md). Google attendee photos aren't available with
+    calendar.readonly (initials shown). All-day events are always skipped (no meeting time).
+
+## Part H — Editable drafted minutes and action items
+
+- [x] Step H-a — Editable minutes (sections, rich text) with autosave; drafts saved on the server
+  - Date: 2026-10-04
+  - Session: CC-20261004-k7q2
+  - What changed: added `quill@2.0.2` (BSD-3; 2.0.3 has advisory GHSA-v3m3-f69x-jf25 — 2.0.2 is
+    unaffected and the app never uses Quill's HTML export), served from node_modules at
+    /vendor/quill (no bundler, no CDN). Drafts under review, their transcripts, and email drafts
+    are now persisted (`minutes-drafts.json`, `transcripts.json`, `email-drafts.json`; approved by
+    the user) so nothing is lost on restart. New `services/minutesDoc/` — `types.ts` (sections +
+    action items + versions), `html.ts` (allowlist sanitiser: p/br/h2/h3/strong/em/u/s/lists/
+    blockquote/https+mailto links only; plain-text + list readers), `convert.ts` (AI draft ↔
+    editable content; edited flags), `minutesDocService.ts` (revision check → named conflicts,
+    autosaves by the same person within 5 min fold into one version, pipeline draft kept in step
+    so emails/search/tracker follow). `routes/minutes.ts` (zod). `meetingPipeline/
+    minutesAmendments.ts` (replaceDraft, amendApprovedMinutes, correctTranscript,
+    sendUpdatedMinutes). Frontend `review/minutesStore.js` (working copy, 2 s autosave, localStorage
+    backup until confirmed, retry on `online`, leave-page warning, recovery after reload, stale-
+    backup choice), `review/sectionsEditor.js` (one Quill per section; toolbar on focus: heading,
+    bold, italic, bullet/numbered list, link dialog; Ctrl/⌘ B/I/Z/Y/Shift+Z; rename, Edited label,
+    move up/down, drag, delete with Undo toast, add section), rich-text spell check via CSS Custom
+    Highlights in `core/spellcheck.js`, new review screen with save status ("Saving…" → "Saved" /
+    "Couldn't save · Retry", announced), `styles/editor.css`, toast action buttons, new icons.
+  - Verification: minutesDoc.test.ts (9), minutesEditorUi.integration.test.ts (sections + format +
+    undo + reorder + delete/undo; offline → Couldn't save → Retry); real headless Chrome: network
+    switched off → "Couldn't save · Retry" + local backup, back online → saved automatically;
+    reload mid-edit → "Recovered your unsaved changes" → saved; desktop/375px screenshots.
+
+- [x] Step H-b — Editable action items
+  - Date: 2026-10-04
+  - Session: CC-20261004-k7q2
+  - What changed: `review/actionItemsEditor.js` — inline task (spell checked), owner picker
+    (attendees then People, avatar + name + email, keyboard combobox, free text allowed), due date,
+    priority, done, add, delete with Undo, reorder (drag or ⋯ Move up/down), "Not an action item"
+    with a restorable list, timestamp → transcript moment (switches to the Transcript tab on
+    phones), Edited label; two-line rows that fit the half-width column and phones.
+  - Verification: minutesEditorUi.integration.test.ts (add + owner pick + due + priority → saved to
+    the pipeline draft; dismiss; delete → Undo; timestamp jump); 375px screenshot.
+
+- [x] Step H-c — Version history and compare with the AI draft
+  - Date: 2026-10-04
+  - Session: CC-20261004-k7q2
+  - What changed: `review/versions.js` — list (AI draft + versions, who, when, reason), preview,
+    "Restore this version" (server makes it a new version; history never rewritten), "Compare
+    with AI draft" (word-level LCS diff, added green / removed red, renamed and deleted sections,
+    action items). Insert from transcript (selection button or a line's time button → quote or
+    note with speaker + time, into any section or a new Notes section).
+  - Verification: minutesEditorUi.integration.test.ts (compare shows added text, restore → editor
+    shows AI text, versions list restore entry; transcript quote inserted on its own line).
+
+- [x] Step H-d — Approval lock and editing approved minutes
+  - Date: 2026-10-04
+  - Session: CC-20261004-k7q2
+  - What changed: minutes are read-only once approved ("Minutes approved" between the gates;
+    "Approved by [name] on [date]" after the final approval). "Edit approved minutes" requires a
+    reason, opens a new amendment version (edits fold into it and update the approved record),
+    "Done editing", then "Send updated minutes" — emailed once per amended version (idempotency
+    key run+version+participant; draft-only mode drafts without sending). Approval saves pending
+    edits first and refuses on a conflict; the spelling check before approval reads the editor.
+  - Verification: minutesDoc.test.ts (lock, reason required, amendment version, update sent once
+    then refused), minutesEditorUi.integration.test.ts (approved → reason → edit → done → send),
+    journey test (read-only after approval).
+
+- [x] Step H-e — AI help per section, transcript corrections, multiple reviewers
+  - Date: 2026-10-04
+  - Session: CC-20261004-k7q2
+  - What changed: `services/minutesDoc/assistant.ts` (Regenerate / Make shorter / Make more formal
+    via Claude `claude-sonnet-5-5` with the same no-assumed-gender rule + one corrective retry,
+    sanitised output; deterministic demo stand-in), POST /api/minutes/:runId/assist (suggestion
+    only, never saved). Page: ✨ menu per section → preview with "Replace" / "Keep mine", warning
+    if the section changed meanwhile, Replace is a normal undoable edit. Transcript corrections:
+    PUT /api/minutes/:runId/transcript (words + speaker renames; original transcript kept on the
+    document; history line; pipeline transcript updated so search follows) and a "Correct
+    transcript" dialog with "Update minutes with corrected names". Presence: POST
+    /api/minutes/:runId/presence every 15 s → "Also viewing" avatars; conflicts show "<name>
+    updated this draft. Reload" instead of overwriting.
+  - Verification: routes/minutes.test.ts (4), minutesEditorUi.integration.test.ts (AI help keep/
+    replace/undo, rename → update minutes names, presence, conflict banner + reload); full suite
+    474 passed (1 skipped) after fixing a background-redraw race in peopleUi; `tsc --noEmit`
+    passes.
+  - Notes: Part G (languages) doesn't exist yet — versions store their language and the view
+    reports out-of-date translations, but there are no translations to mark. Full real-time
+    co-editing is planned only (see summary). Existing tests updated to the new editor (journey,
+    spell check); the page harness now maps /vendor/quill and stubs Range geometry for jsdom.

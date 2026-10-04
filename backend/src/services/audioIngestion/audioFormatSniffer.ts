@@ -6,7 +6,18 @@ export function sniffAudioFormat(buffer: Buffer): SupportedAudioFormat | null {
   if (isMp3(buffer)) return 'mp3';
   const isoBmffBrand = isoBmffFormat(buffer);
   if (isoBmffBrand) return isoBmffBrand;
+  if (isWebm(buffer)) return 'webm';
+  if (isOgg(buffer)) return 'ogg';
   return null;
+}
+
+/** Matroska/WebM files start with the EBML magic number 1A 45 DF A3. */
+function isWebm(buffer: Buffer): boolean {
+  return buffer.length >= 4 && buffer[0] === 0x1a && buffer[1] === 0x45 && buffer[2] === 0xdf && buffer[3] === 0xa3;
+}
+
+function isOgg(buffer: Buffer): boolean {
+  return buffer.length >= 4 && buffer.toString('ascii', 0, 4) === 'OggS';
 }
 
 function isWav(buffer: Buffer): boolean {

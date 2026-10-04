@@ -1,0 +1,148 @@
+/* Meeting Assistant — design tokens. The single source for color, spacing, radius, type, and motion.
+   Light is the default; dark applies when the OS prefers it (theme "system") or when chosen in Settings. */
+
+@font-face {
+  font-family: "Inter";
+  src: url("../fonts/InterVariable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  /* Type */
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-md: 16px;
+  --text-lg: 20px;
+  --text-xl: 24px;
+  --text-2xl: 28px;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --leading-tight: 1.25;
+  --leading-normal: 1.55;
+
+  /* Spacing — 8px grid (half-step for tight inline gaps only) */
+  --space-half: 4px;
+  --space-1: 8px;
+  --space-2: 16px;
+  --space-3: 24px;
+  --space-4: 32px;
+  --space-5: 40px;
+  --space-6: 48px;
+  --space-8: 64px;
+
+  /* Shape & motion */
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-full: 999px;
+  --border-width: 1px;
+  --duration: 160ms;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  /* Layout */
+  --sidebar-width: 232px;
+  --topbar-height: 56px;
+  --content-max: 1120px;
+
+  /* Light palette — neutral grays + one accent */
+  --color-bg: #fbfbfc;
+  --color-surface: #ffffff;
+  --color-surface-subtle: #f6f7f9;
+  --color-surface-hover: #f1f2f5;
+  --color-border: #e6e8ec;
+  --color-border-strong: #d4d7de;
+  --color-text: #16181d;
+  --color-text-muted: #5b616e;
+  --color-text-subtle: #8a909c;
+  --color-accent: #5b5bd6;
+  --color-accent-hover: #4b4bc4;
+  --color-accent-fg: #ffffff;
+  --color-accent-subtle: #efeffd;
+  --color-focus: rgba(91, 91, 214, 0.45);
+  --color-overlay: rgba(16, 18, 24, 0.4);
+
+  /* Status — used only for status */
+  --color-success: #1a7f4b;
+  --color-success-subtle: #e8f6ee;
+  --color-warning: #a15c07;
+  --color-warning-subtle: #fdf3e2;
+  --color-danger: #c4320a;
+  --color-danger-subtle: #fdeee9;
+  --color-neutral: #5b616e;
+  --color-neutral-subtle: #eef0f3;
+
+  --shadow-sm: 0 1px 2px rgba(16, 18, 24, 0.05);
+  --shadow-md: 0 4px 16px rgba(16, 18, 24, 0.08), 0 1px 3px rgba(16, 18, 24, 0.06);
+  --shadow-lg: 0 16px 48px rgba(16, 18, 24, 0.18);
+  color-scheme: light;
+}
+
+/* Dark palette — same roles, tuned for contrast on dark surfaces. */
+:root[data-theme="dark"] {
+  --color-bg: #0d0e11;
+  --color-surface: #15171b;
+  --color-surface-subtle: #1b1d22;
+  --color-surface-hover: #22252b;
+  --color-border: #2a2d34;
+  --color-border-strong: #3a3e47;
+  --color-text: #ecedf0;
+  --color-text-muted: #a3a8b3;
+  --color-text-subtle: #7b808b;
+  --color-accent: #7c7cf0;
+  --color-accent-hover: #8d8df3;
+  --color-accent-fg: #0d0e11;
+  --color-accent-subtle: #23233f;
+  --color-focus: rgba(124, 124, 240, 0.55);
+  --color-overlay: rgba(0, 0, 0, 0.6);
+  --color-success: #4cc38a;
+  --color-success-subtle: #12291f;
+  --color-warning: #f0b450;
+  --color-warning-subtle: #2e2412;
+  --color-danger: #ff7b5c;
+  --color-danger-subtle: #321912;
+  --color-neutral: #a3a8b3;
+  --color-neutral-subtle: #23262c;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.6);
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-bg: #0d0e11;
+    --color-surface: #15171b;
+    --color-surface-subtle: #1b1d22;
+    --color-surface-hover: #22252b;
+    --color-border: #2a2d34;
+    --color-border-strong: #3a3e47;
+    --color-text: #ecedf0;
+    --color-text-muted: #a3a8b3;
+    --color-text-subtle: #7b808b;
+    --color-accent: #7c7cf0;
+    --color-accent-hover: #8d8df3;
+    --color-accent-fg: #0d0e11;
+    --color-accent-subtle: #23233f;
+    --color-focus: rgba(124, 124, 240, 0.55);
+    --color-overlay: rgba(0, 0, 0, 0.6);
+    --color-success: #4cc38a;
+    --color-success-subtle: #12291f;
+    --color-warning: #f0b450;
+    --color-warning-subtle: #2e2412;
+    --color-danger: #ff7b5c;
+    --color-danger-subtle: #321912;
+    --color-neutral: #a3a8b3;
+    --color-neutral-subtle: #23262c;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.45);
+    --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.6);
+    color-scheme: dark;
+  }
+}
