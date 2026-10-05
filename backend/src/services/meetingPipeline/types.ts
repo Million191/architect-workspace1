@@ -98,6 +98,11 @@ export interface DraftMinutesInput {
   /** Called with each stage name as it starts — used only to show real progress on the page. */
   onProgress?: (stage: string) => void;
   meetingContext?: MeetingContext;
+  /**
+   * Who was speaking when, from a meeting bot (Recall.ai). When given, these names label the
+   * transcript instead of the diarization provider's guesses.
+   */
+  speakerTurns?: Array<{ startMs: number; endMs: number; name: string }>;
 }
 
 /**

@@ -1,7 +1,7 @@
 import { ingestPhysicalRecording } from '../audioIngestion/physicalAudioIngestionService';
 import { transcribeAudio } from '../transcription/transcriptionService';
 import { diarizeAndMapSpeakers } from '../diarization/diarizationService';
-import { SpeakerMapping } from '../diarization/types';
+import { DiarizationClient, NameMappingClient, SpeakerMapping } from '../diarization/types';
 import { generateMeetingSummary } from '../meetingSummary/meetingSummaryService';
 import { markSegments } from '../segmentMarking/segmentMarkingService';
 import { MarkedTranscript } from '../segmentMarking/types';
@@ -30,6 +30,20 @@ export function withSpeakerLabels(marked: MarkedTranscript, speakers: SpeakerMap
       return hasText && label ? { ...segment, text: `${label}: ${segment.text}` } : segment;
     }),
   };
+}
+
+/**
+ * Diarization from a bot's speaker timeline: each turn becomes a segment tagged with the speaker's
+ * name, and the name mapping is the identity. Speakers missing from the attendee list are added to
+ * it for this stage only, so the mapping's "must be an attendee" check keeps their names.
+ */
+export function speakerTurnClients(turns: NonNullable<DraftMinutesInput['speakerTurns']>) {
+  const tag = (name: string) => `NAME:${name}`;
+  const names = Array.from(new Set(turns.map((t) => t.name)));
+  const diarizationClient: DiarizationClient = { diarize: async () => turns.map((t) => ({ startMs: t.startMs, endMs: t.endMs, speakerTag: tag(t.name) })) };
+  const nameMappingClient: NameMappingClient = { mapSpeakersToNames: async (tags) => Object.fromEntries(tags.filter((t) => t.startsWith('NAME:')).map((t) => [t, t.slice(5)])) };
+  const attendees = (given: Array<{ name: string }>) => [...given, ...names.filter((n) => !given.some((a) => a.name === n)).map((name) => ({ name }))];
+  return { diarizationClient, nameMappingClient, attendees };
 }
 
 /**
@@ -77,10 +91,12 @@ export async function draftMinutesFromAudio(
     return runId; // same recording already drafted — never re-open or duplicate its review
   }
 
+  // A meeting bot already knows who spoke when: use its names rather than guessing from the audio.
+  const known = input.speakerTurns?.length ? speakerTurnClients(input.speakerTurns) : undefined;
   const speakers = await stage(runId, 'speaker identification', () =>
-    diarizeAndMapSpeakers(transcript, input.buffer, attendees, {
-      diarizationClient: providers.diarizationClient,
-      nameMappingClient: providers.nameMappingClient,
+    diarizeAndMapSpeakers(transcript, input.buffer, known ? known.attendees(attendees) : attendees, {
+      diarizationClient: known?.diarizationClient ?? providers.diarizationClient,
+      nameMappingClient: known?.nameMappingClient ?? providers.nameMappingClient,
       idempotencyStore: stores.speakers,
       ...diarization,
     })

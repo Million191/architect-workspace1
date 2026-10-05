@@ -334,6 +334,7 @@
   MA.cal.attachAdd(actions, store, api);
   MA.cal.attachRecording(actions, store, api);
   MA.cal.attachSync(actions, store, api);
+  MA.notetaker.attach(actions, store, api, { loadLists: loadLists });
   MA.shell.init(actions);
   store.subscribe(render);
   var params = new URL(window.location.href).searchParams;

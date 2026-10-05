@@ -15,7 +15,7 @@
         var s = new Date(m.start), e = new Date(m.end);
         var row = append(el('button', null, 'cal-list-row is-' + m.display, { type: 'button', role: 'listitem', 'aria-label': MA.cal.weekView.blockLabel(m), 'data-id': m.id }),
           el('span', M.fmtTime(s) + ' – ' + M.fmtTime(e), 'muted'),
-          append(el('span'), el('strong', m.title), MA.cal.syncedTag ? MA.cal.syncedTag(m) : null, m.display === 'postponed' && m.originalStart ? el('span', ' · moved from ' + M.fmtDay(new Date(m.originalStart)) + ' ' + M.fmtTime(new Date(m.originalStart)), 'muted') : null),
+          append(el('span'), el('strong', m.title), MA.cal.syncedTag ? MA.cal.syncedTag(m) : null, ctx.blockExtras ? ctx.blockExtras(m) : null, m.display === 'postponed' && m.originalStart ? el('span', ' · moved from ' + M.fmtDay(new Date(m.originalStart)) + ' ' + M.fmtTime(new Date(m.originalStart)), 'muted') : null),
           append(el('span', null, 'participants'), ui.avatarStack(m.participants, { interactive: false })),
           ui.badge(MA.displayStatus(m.display)));
         row.addEventListener('click', function () { ctx.onOpen(m, row); });

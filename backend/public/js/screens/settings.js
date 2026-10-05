@@ -32,6 +32,24 @@
     return append(el('div'), box, el('p', 'Minutes, transcripts, and action items are never deleted by this setting. Recordings are visible only to people who use this app on your server.', 'help'), status);
   }
 
+  /** Meeting notetaker (Recall.ai): whether it's set up, and automatic sending to synced meetings. */
+  function notetaker(ctx) {
+    var nt = ctx.state.notetaker || {};
+    var box = el('div');
+    if (!nt.loaded) return append(box, el('p', 'Loading…', 'help'));
+    if (!nt.configured) {
+      return append(box, ui.callout('info', 'circle-help', 'Not set up on this server.', 'Add RECALL_API_KEY (and RECALL_WEBHOOK_SECRET for live status) to the server’s environment, then restart. See docs/NOTETAKER_SETUP.md.'));
+    }
+    var on = !!nt.autoSend;
+    var sw = el('button', null, 'switch' + (on ? ' is-on' : ''), { type: 'button', role: 'switch', 'aria-checked': on ? 'true' : 'false', id: 'notetakerAuto', 'aria-describedby': 'notetakerAutoHint' });
+    sw.appendChild(el('span', null, 'switch-thumb', { 'aria-hidden': 'true' }));
+    sw.addEventListener('click', function () { ctx.actions.notetakerSetAuto(!on); });
+    return append(box,
+      append(el('div', null, 'notetaker-row'), sw, el('label', 'Send the notetaker to synced meetings automatically', 'notetaker-label', { for: 'notetakerAuto' })),
+      el('p', 'Meetings synced from Google Calendar or Outlook with a Zoom, Teams or Google Meet link. It joins at the start time as “Meeting Assistant Notetaker” and says in the chat that it’s recording. Turn it off for any single meeting from the calendar.', 'help', { id: 'notetakerAutoHint' }),
+      el('p', 'Service: ' + (nt.provider === 'demo' ? 'simulated notetaker (demo mode)' : 'Recall.ai') + '. The API key stays on the server.', 'help'));
+  }
+
   function integrations(ctx) {
     var card = section('Integrations', 'Sync meetings from Google Calendar or Outlook. Read-only: Meeting Assistant never changes your calendar.', MA.cal.integrations(ctx.state, ctx.actions));
     card.querySelector('h2').id = 'integrationsHeading';
@@ -70,6 +88,7 @@
         section('Appearance', 'Follow your system, or pick light or dark.', themes),
         section('Your name', 'Shown on your approvals and in the top bar.', append(el('div', null, 'field'), el('label', 'Name', 'label', { for: 'settingsName' }), name)),
         integrations(ctx),
+        section('Meeting notetaker', 'A bot that joins Zoom, Teams and Google Meet calls, records them, and drafts minutes for your review.', notetaker(ctx)),
         section('Recording and privacy', 'Applies to meetings recorded in the app. Everyone must be told before recording starts.', retention(ctx)),
         section('People', 'Names and photos shown for meeting participants.',
           ui.button('Manage people', 'secondary', function () { ctx.actions.go('people'); }, { icon: 'users', id: 'settingsPeople' })),

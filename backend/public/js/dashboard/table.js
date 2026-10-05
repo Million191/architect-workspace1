@@ -179,7 +179,7 @@
   var PLATFORM = { zoom: 'Zoom', teams: 'Microsoft Teams', meet: 'Google Meet' };
   function platformBadge(platform) {
     if (!PLATFORM[platform]) return null;
-    return append(el('span', null, 'platform-tag', { title: PLATFORM[platform] }), MA.icon('monitor'), el('span', PLATFORM[platform], 'platform-name'));
+    return append(el('span', null, 'platform-tag', { title: PLATFORM[platform] }), MA.notetaker.platformLogo(platform, { decorative: true }), el('span', PLATFORM[platform], 'platform-name'));
   }
 
   /** Phone layout (below 640px): one card per meeting; tapping the card opens it, ⋯ holds the rest. */

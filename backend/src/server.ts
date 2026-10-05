@@ -10,10 +10,17 @@ import { createScheduleRouter } from './routes/schedule';
 import { createPeopleRouter } from './routes/people';
 import { createSearchRouter } from './routes/search';
 import { createSpellingRouter } from './routes/spelling';
-import { applyRetention, createRecordingsRouter } from './routes/recordings';
+import { applyRetention, createRecordingsRouter, DEFAULT_RETENTION } from './routes/recordings';
+import { RawAudioRetention } from './services/recording/types';
 import { createCalendarSyncRouter, photoRoute } from './routes/calendarSync';
 import { createMinutesRouter } from './routes/minutes';
 import { createActivityRouter } from './routes/activity';
+import { createNotetakerRouter, notetakerWebhook } from './routes/notetaker';
+import { createMeetingBotService, MeetingBotService } from './services/meetingBot/meetingBotService';
+import { createRecallClient, recallConfigFromEnv } from './services/meetingBot/recallClient';
+import { createDemoBotClient } from './services/meetingBot/demoBotClient';
+import { applyBotRetention, autoSendDue } from './services/meetingBot/botAutomation';
+import { BotSession } from './services/meetingBot/types';
 import { createMinutesDocService, MinutesDocService } from './services/minutesDoc/minutesDocService';
 import { MinutesDocument } from './services/minutesDoc/types';
 import { claudeAssistant, demoAssistant, MinutesAssistant } from './services/minutesDoc/assistant';
@@ -64,10 +71,18 @@ export interface AppDeps {
   assistant?: MinutesAssistant;
   /** How participant notices go out: the same delivery client and mode as meeting emails. */
   email?: { mode: EmailMode; deliver?: EmailDeliveryClient; noticeLog?: Map<string, string> };
+  /** Meeting notetaker (Recall.ai bot). Left unset, /api/notetaker answers 503. */
+  bots?: MeetingBotService;
+  /** RECALL_WEBHOOK_SECRET; without it the webhook refuses every request (polling still follows bots). */
+  botWebhookSecret?: string;
+  /** Told when a bot is sent or stopped, so status polling speeds up right away. */
+  onBotActivity?: () => void;
 }
 
 export function createApp(deps: AppDeps = {}): Express {
   const app = express();
+  // Signed with the exact raw bytes, so it must see the body before express.json() parses it.
+  app.post('/api/notetaker/webhook', ...notetakerWebhook({ bots: deps.bots, secret: deps.botWebhookSecret }));
   app.use(express.json());
 
   // express.json() rejects malformed bodies with a bare SyntaxError; without this handler
@@ -89,6 +104,7 @@ export function createApp(deps: AppDeps = {}): Express {
   const progress = new UploadProgressTracker();
   app.use('/api/meetings', createMeetingPipelineRouter({ pipeline: deps.meetingPipeline, schedule: deps.schedule, progress, failedRecordings: deps.recordings ? () => deps.recordings!.listFailed() : undefined }));
   app.use('/api/recordings', createRecordingsRouter({ recordings: deps.recordings, pipeline: deps.meetingPipeline, schedule: deps.schedule, progress, settings: deps.settings ?? new Map() }));
+  app.use('/api/notetaker', createNotetakerRouter({ bots: deps.bots, settings: deps.settings ?? new Map(), onActivity: deps.onBotActivity }));
   app.use('/api/schedule', createScheduleRouter({
     schedule: deps.schedule,
     pipeline: deps.meetingPipeline,
@@ -139,7 +155,30 @@ if (require.main === module) {
     store: useDemo ? new Map<string, CalendarConnection>() : new JsonFileMap<CalendarConnection>(path.join(dataDir, 'calendar-connections.json')),
     config: oauthConfigFromEnv(), encryptionKey: process.env.TOKEN_ENCRYPTION_KEY, fetchImpl: fetch as unknown as FetchLike, schedule, people, photoDir,
   });
+  // Notetaker: Recall.ai when RECALL_API_KEY is set, a simulated bot in demo mode, otherwise off.
+  const recall = recallConfigFromEnv();
+  const bots = createMeetingBotService({
+    store: useDemo ? new Map<string, BotSession>() : new JsonFileMap<BotSession>(path.join(dataDir, 'bot-sessions.json')),
+    client: useDemo ? createDemoBotClient() : recall ? createRecallClient(recall) : undefined,
+    pipeline: meetingPipeline, schedule,
+  });
+  // Bot status: webhooks first; this poll is the fallback (and recovers bots after a restart).
+  // Every 2 s (demo) / 20 s (real) while a bot is active, nothing otherwise.
+  const pollEveryMs = useDemo ? 2000 : 20000;
+  let polling = false, lastPoll = 0;
+  const pollBots = async () => {
+    if (polling || !bots.hasActiveWork() || Date.now() - lastPoll < pollEveryMs) return;
+    polling = true; lastPoll = Date.now();
+    try { await bots.reconcile(); } finally { polling = false; }
+  };
+  setInterval(() => { void pollBots(); }, 1000).unref();
+  const autoSend = () => autoSendDue({ bots, schedule, settings }).catch((error) => console.error(JSON.stringify({ event: 'bot_auto_send_failed', error_class: (error as Error).name, outcome: 'failure' })));
+  setInterval(autoSend, 60 * 1000).unref();
+  void autoSend();
   const app = createApp({
+    bots,
+    botWebhookSecret: process.env.RECALL_WEBHOOK_SECRET?.trim() || undefined,
+    onBotActivity: () => { lastPoll = 0; void autoSend(); },
     meetingPipeline,
     schedule,
     calendar,
@@ -176,6 +215,10 @@ if (require.main === module) {
     try {
       const cleaned = applyRetention({ recordings, pipeline: meetingPipeline, settings });
       if (cleaned.length) console.log(JSON.stringify({ event: 'raw_audio_deleted', count: cleaned.length, outcome: 'success' }));
+      const policy = (settings.get('rawAudioRetention') as RawAudioRetention | undefined) ?? DEFAULT_RETENTION;
+      const approved = (runId: string) => { try { const st = meetingPipeline.getRun(runId).stage; return st === 'sent' || st === 'approved_not_sent'; } catch { return false; } };
+      applyBotRetention(bots, policy, approved).then((ids) => { if (ids.length) console.log(JSON.stringify({ event: 'bot_media_deleted', count: ids.length, outcome: 'success' })); })
+        .catch((error) => console.error(JSON.stringify({ event: 'bot_media_retention_failed', error_class: (error as Error).name, outcome: 'failure' })));
     } catch (error) {
       console.error(JSON.stringify({ event: 'raw_audio_retention_failed', error_class: error instanceof Error ? error.name : 'UnknownError', outcome: 'failure' }));
     }

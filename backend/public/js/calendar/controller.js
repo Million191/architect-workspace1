@@ -74,7 +74,7 @@
     /** Needs review → straight to review; approved/sent → the approved meeting; scheduled → details. */
     actions.calOpenMeeting = function (m, anchor) {
       if (m.runId && ['needs_review', 'emails_drafted', 'approved', 'sent'].indexOf(m.display) !== -1) { actions.openMeeting(m.runId); return; }
-      MA.cal.details.open({ meeting: m, anchor: anchor, actions: actions.calDetailActions ? actions.calDetailActions(m) : [] });
+      MA.cal.details.open({ meeting: m, anchor: anchor, actions: actions.calDetailActions ? actions.calDetailActions(m) : [], extra: actions.calDetailExtra ? actions.calDetailExtra(m) : null });
     };
 
     // Esc closes the panel when no dialog or menu is open.

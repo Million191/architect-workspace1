@@ -96,6 +96,15 @@
       retention: function () { return call('/api/recordings/settings/retention'); },
       setRetention: function (value) { return call('/api/recordings/settings/retention', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rawAudioRetention: value }) }); },
     },
+    /** Meeting notetaker (Recall.ai bot): send / stop / status. The API key never reaches the browser. */
+    notetaker: {
+      status: function () { return call('/api/notetaker/status'); },
+      sessions: function () { return call('/api/notetaker/sessions'); },
+      send: function (scheduledMeetingId, by) { return post('/api/notetaker/sessions', { scheduledMeetingId: scheduledMeetingId, consent: true, confirmedBy: by }); },
+      stop: function (id) { return post('/api/notetaker/sessions/' + encodeURIComponent(id) + '/stop', {}); },
+      retry: function (id) { return post('/api/notetaker/sessions/' + encodeURIComponent(id) + '/retry', {}); },
+      setSettings: function (body) { return call('/api/notetaker/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); },
+    },
     /** Spell check (reports only — the page changes text only when a suggestion is accepted). */
     spelling: {
       check: function (texts) { return post('/api/spellcheck', { texts: texts }).then(function (b) { return b.results; }); },

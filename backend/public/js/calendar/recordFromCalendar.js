@@ -70,7 +70,8 @@
       box.appendChild(append(el('div', null, 'now-row'),
         append(el('div', null, 'now-text'), el('strong', m.title), el('span', when + (PLATFORM_NAME[platform] ? ' · ' + PLATFORM_NAME[platform] : ''), 'muted')),
         ui.avatarStack(m.participants || []),
-        startButton(m, actions, { variant: 'primary', size: 'sm' })));
+        startButton(m, actions, { variant: 'primary', size: 'sm' }),
+        actions.notetakerControl ? actions.notetakerControl(m, { compact: true }) : null));
     });
     return box;
   };

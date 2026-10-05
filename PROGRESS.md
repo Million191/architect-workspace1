@@ -3301,3 +3301,29 @@
     horizontal scroll.
   - Notes: No sign-out item (the app has no accounts). "Approved" tab includes Emails drafted
     (minutes approved, email awaiting approval). Failed-recording time is UTC from the server.
+
+- [x] Meeting Assistant Phase 2: meeting notetaker bot (Recall.ai) for Zoom / Teams / Google Meet
+  - Date: 2026-10-05
+  - Session: CC-20261004-k7q2
+  - What changed: New backend/src/services/meetingBot/ (Recall client with 15 s timeout, 3 capped
+    retries and the repo's CircuitBreaker; Svix-signed webhook verification; status mapping and
+    readable error messages; speaker-timeline parsing; bot service with send/stop/events/processing
+    and polling fallback + restart recovery; auto-send to synced meetings; retention deletes
+    Recall's media copy; simulated demo bot). New /api/notetaker routes (zod-validated, consent
+    required) and a raw-body signed webhook mounted before express.json(). Pipeline accepts
+    `speakerTurns` so bot speaker names label the transcript. Page: platform logos on calendar
+    blocks, list rows and dashboard rows; "Send notetaker" switch (role=switch) with consent dialog
+    in meeting details and the "Happening now" banner; live status Scheduled → Joining → Waiting to
+    be admitted → Recording → Processing → Ready for review, with errors in words, aria-live
+    announcements, and a top-bar "Notetaker recording" pill; Stop recording confirm; Retry
+    processing; Settings → Meeting notetaker (automatic sending, consent). Env: RECALL_API_KEY,
+    RECALL_REGION, RECALL_WEBHOOK_SECRET (server only). Guide: docs/NOTETAKER_SETUP.md.
+  - Verification: new tests recallEvents (11), recallClient (10), meetingBotService (15),
+    routes/notetaker (7), notetakerUi.integration (3); full suite 540 passed (1 skipped);
+    `tsc --noEmit` passes; demo flow checked end to end in headless Chrome (send → recording pill →
+    stop → processed into review), 375px no horizontal scroll.
+  - Notes: Recall chosen by the user (cost ~$0.50/recorded hour; local Whisper transcribes).
+    Not yet run against a live Recall key: `recording_config.audio_mixed_mp3`, the
+    speaker_timeline_download_url field and `delete_media` are from Recall's docs and listed in the
+    setup guide to confirm. Without accounts, per-person visibility of recordings is not enforced.
+    Failed notetaker sessions show on the calendar/banner, not in the dashboard table.

@@ -16,6 +16,7 @@
 <link rel="stylesheet" href="styles/record.css">
 <link rel="stylesheet" href="styles/editor.css">
 <link rel="stylesheet" href="styles/dashboard.css">
+<link rel="stylesheet" href="styles/notetaker.css">
 <link rel="stylesheet" href="styles/mobile.css">
 </head>
 <body>
@@ -40,6 +41,7 @@
       </div>
       <button id="searchOpen" class="btn btn-ghost btn-icon-touch narrow-only" type="button" aria-label="Search meetings, transcripts, or action items" aria-haspopup="dialog"></button>
       <button id="recPill" class="rec-pill" type="button" hidden><span class="record-dot" aria-hidden="true"></span><span>Recording</span><span id="recPillTime" class="mono">0:00</span></button>
+      <button id="botPill" class="rec-pill bot-pill" type="button" hidden title="Open the calendar"><span class="record-dot" aria-hidden="true"></span><span class="bot-pill-text">Notetaker recording</span></button>
       <div class="topbar-right">
         <button id="helpButton" class="btn btn-ghost btn-icon-touch" type="button" aria-label="Help" aria-haspopup="menu" aria-expanded="false"></button>
         <button id="avatar" class="avatar avatar-button" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Account"></button>
@@ -52,6 +54,7 @@
 <div id="searchOverlay" class="search-overlay" hidden></div>
 <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
 <div id="recAnnounce" class="sr-only" role="status" aria-live="assertive"></div>
+<div id="botAnnounce" class="sr-only" role="status" aria-live="polite"></div>
 
 <script src="vendor/quill/quill.js"></script>
 <script src="js/core/icons.js"></script>
@@ -77,6 +80,8 @@
 <script src="js/calendar/addMeeting.js"></script>
 <script src="js/calendar/recordFromCalendar.js"></script>
 <script src="js/calendar/sync.js"></script>
+<script src="js/notetaker/ui.js"></script>
+<script src="js/notetaker/controller.js"></script>
 <script src="js/dashboard/stats.js"></script>
 <script src="js/dashboard/table.js"></script>
 <script src="js/dashboard/activity.js"></script>
