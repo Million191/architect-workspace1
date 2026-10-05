@@ -230,6 +230,15 @@ export function createMinutesDocService(deps: MinutesDocDeps) {
       return { transcript: segments, changed: changed + renamed, reason };
     },
 
+    /** Edits, restores, amendments, and transcript corrections across all meetings, for "Recent activity". */
+    activity(): Array<{ at: string; runId: string; kind: VersionKind; by: string; reason?: string }> {
+      const out: Array<{ at: string; runId: string; kind: VersionKind; by: string; reason?: string }> = [];
+      for (const doc of deps.store.values()) {
+        for (const v of doc.versions) if (v.kind !== 'ai_draft') out.push({ at: v.updatedAt, runId: doc.runId, kind: v.kind, by: v.author, reason: v.reason });
+      }
+      return out;
+    },
+
     /** Internal: the stored document (used by transcript corrections and translations). */
     load,
     commit,

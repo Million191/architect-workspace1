@@ -73,7 +73,7 @@ describe('Phone layout', () => {
     const menu = card.querySelector('.meeting-card-menu') as HTMLButtonElement;
     expect(menu.getAttribute('aria-label')).toBe('More actions for Budget review');
     menu.click();
-    expect(Array.from(page.doc.querySelectorAll('[role="menu"] .menu-label')).map((n) => n.textContent)).toEqual(['Review minutes', 'Copy link']);
+    expect(Array.from(page.doc.querySelectorAll('[role="menu"] .menu-label')).map((n) => n.textContent)).toEqual(['Review minutes', 'Rename', 'Copy link']);
     key(page, page.doc.querySelector('[role="menuitem"]')!, 'Escape');
     expect(text(page, 'h1.page-title')).toBe('Meetings'); // opening the menu did not open the meeting
 

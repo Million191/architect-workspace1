@@ -98,9 +98,9 @@ describe('Live in-person recording', () => {
     const app = server();
     const page = track(openPage(app, '/'));
     const w = installMedia(page);
-    await waitFor(() => !!byId(page, 'recordMeeting'), 'meetings');
-    click(page, 'recordMeeting');
-    (page.doc.querySelectorAll('[role="menuitem"]')[0] as HTMLButtonElement).click();
+    await waitFor(() => !!byId(page, 'newMeetingMenu'), 'meetings');
+    click(page, 'newMeetingMenu');
+    (page.doc.querySelectorAll('[role="menuitem"]')[1] as HTMLButtonElement).click(); // Upload file, Record in person, Record an online meeting
     await waitFor(() => text(page, 'h1.page-title') === 'Record an in-person meeting', 'setup');
     expect(text(page, '.rec-setup')).toContain('Place your device in the middle of the table');
 
@@ -179,7 +179,7 @@ describe('Live in-person recording', () => {
     const app = server();
     const page = track(openPage(app, '/'));
     const w = installMedia(page);
-    await waitFor(() => !!byId(page, 'recordMeeting'), 'meetings');
+    await waitFor(() => !!byId(page, 'newMeetingMenu'), 'meetings');
     const MA = (w as unknown as { MA: { chunks: { local: { putRecording(r: object): Promise<void>; putChunk(id: string, i: number, b: Blob): Promise<void> } }; app: { actions: { recFindUnfinished(): Promise<void> } } } }).MA;
     const id = '0f0e0d0c-aaaa-4bbb-8ccc-111122223333';
     await MA.chunks.local.putRecording({ id, mode: 'in_person', startedAt: new Date().toISOString(), chunkCount: 1, durationMs: 65000, markers: [], finished: false, title: 'Crashed meeting',

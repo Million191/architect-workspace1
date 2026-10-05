@@ -15,6 +15,7 @@
 <link rel="stylesheet" href="styles/search.css">
 <link rel="stylesheet" href="styles/record.css">
 <link rel="stylesheet" href="styles/editor.css">
+<link rel="stylesheet" href="styles/dashboard.css">
 <link rel="stylesheet" href="styles/mobile.css">
 </head>
 <body>
@@ -40,8 +41,8 @@
       <button id="searchOpen" class="btn btn-ghost btn-icon-touch narrow-only" type="button" aria-label="Search meetings, transcripts, or action items" aria-haspopup="dialog"></button>
       <button id="recPill" class="rec-pill" type="button" hidden><span class="record-dot" aria-hidden="true"></span><span>Recording</span><span id="recPillTime" class="mono">0:00</span></button>
       <div class="topbar-right">
-        <button id="paletteButton" class="btn btn-ghost btn-sm" type="button" aria-label="Open command palette" aria-keyshortcuts="Control+K Meta+K">Commands</button>
-        <span id="avatar" class="avatar" role="img" aria-label="Reviewer"></span>
+        <button id="helpButton" class="btn btn-ghost btn-icon-touch" type="button" aria-label="Help" aria-haspopup="menu" aria-expanded="false"></button>
+        <button id="avatar" class="avatar avatar-button" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Account"></button>
       </div>
     </header>
     <main id="content" class="content" tabindex="-1"></main>
@@ -51,7 +52,6 @@
 <div id="searchOverlay" class="search-overlay" hidden></div>
 <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
 <div id="recAnnounce" class="sr-only" role="status" aria-live="assertive"></div>
-<div id="palette" hidden></div>
 
 <script src="vendor/quill/quill.js"></script>
 <script src="js/core/icons.js"></script>
@@ -77,6 +77,9 @@
 <script src="js/calendar/addMeeting.js"></script>
 <script src="js/calendar/recordFromCalendar.js"></script>
 <script src="js/calendar/sync.js"></script>
+<script src="js/dashboard/stats.js"></script>
+<script src="js/dashboard/table.js"></script>
+<script src="js/dashboard/activity.js"></script>
 <script src="js/screens/meetings.js"></script>
 <script src="js/screens/upload.js"></script>
 <script src="js/screens/processing.js"></script>

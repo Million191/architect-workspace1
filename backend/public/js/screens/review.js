@@ -50,7 +50,7 @@
   }
 
   function primaryAction(s, v, ctx) {
-    if (v.state === 'draft') return [el('span', 'Approval 1 of 2', 'gate-label'), ui.button('Approve minutes', 'primary', function () { ctx.actions.approveMinutes(); }, { icon: 'check', id: 'primaryAction', disabled: s.busy })];
+    if (v.state === 'draft') return [el('span', 'Approval 1 of 2', 'gate-label'), s.run.emailMode === 'draft-only' ? ui.draftOnlyBadge() : null, ui.button('Approve minutes', 'primary', function () { ctx.actions.approveMinutes(); }, { icon: 'check', id: 'primaryAction', disabled: s.busy })];
     if (v.state === 'locked') return [ui.button('Review email', 'primary', function () { ctx.actions.go('send'); }, { iconAfter: 'arrow-right', id: 'primaryAction' })];
     if (v.state === 'approved') return [ui.button('Edit approved minutes', 'secondary', function () { ctx.actions.startAmendment(); }, { icon: 'pencil', id: 'editApproved' }), ui.button('View email', 'primary', function () { ctx.actions.go('send'); }, { iconAfter: 'arrow-right', id: 'primaryAction' })];
     return [ui.button('Done editing', 'primary', function () { ctx.actions.finishAmendment(); }, { icon: 'check', id: 'primaryAction' })];

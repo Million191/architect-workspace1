@@ -51,6 +51,7 @@
 .cal-block .tag { align-self: flex-start; padding: 0 6px; border-radius: var(--radius-full); background: var(--color-surface); font-weight: var(--weight-medium); color: var(--color-accent); }
 .is-upcoming, .is-postponed { background: var(--color-accent-subtle); border-color: color-mix(in srgb, var(--color-accent) 30%, transparent); border-left-color: var(--color-accent); }
 .is-needs_review { background: var(--color-warning-subtle); border-color: color-mix(in srgb, var(--color-warning) 30%, transparent); border-left-color: var(--color-warning); }
+.is-emails_drafted { background: var(--color-accent-subtle); border-color: color-mix(in srgb, var(--color-accent) 30%, transparent); border-left-color: var(--color-accent); }
 .is-approved, .is-sent { background: var(--color-success-subtle); border-color: color-mix(in srgb, var(--color-success) 30%, transparent); border-left-color: var(--color-success); }
 .is-cancelled { background: var(--color-neutral-subtle); border-color: var(--color-border); border-left-color: var(--color-text-subtle); }
 .is-cancelled .cal-block-title { text-decoration: line-through; color: var(--color-text-muted); }

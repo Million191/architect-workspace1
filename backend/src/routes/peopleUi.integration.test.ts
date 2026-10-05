@@ -131,9 +131,9 @@ describe('Participants with names and avatars', () => {
     const six = ['sara.lee', 'tom.ward', 'ann.bo', 'li.wu', 'raj.patel', 'eve.adams'].map((n) => ({ email: `${n}@acme.com` }));
     await request(app).post('/api/schedule').send({ title: 'All hands', start: at(2, 10), end: at(2, 11), participants: six });
     const page = track(openPage(app));
-    await waitFor(() => !!page.doc.getElementById('weekCard'), 'dashboard');
+    await waitFor(() => !!page.doc.getElementById('viewCalendar'), 'dashboard');
     await settle(page); // background loads (People, "Happening now") redraw the page once; don't hold stale elements
-    (page.doc.getElementById('weekCard') as HTMLButtonElement).click();
+    (page.doc.getElementById('viewCalendar') as HTMLButtonElement).click();
     await waitFor(() => !!page.doc.querySelector('.cal-block .avatar-stack'), 'block stack');
     await settle(page);
     const stack = page.doc.querySelector('.cal-block .avatar-stack')!;

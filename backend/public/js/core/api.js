@@ -51,6 +51,9 @@
     meetings: function () { return call('/api/meetings').then(function (b) { return b.meetings; }); },
     actionItems: function () { return call('/api/meetings/action-items/all').then(function (b) { return b.actionItems; }); },
     getRun: function (id) { return call(meeting(id)); },
+    renameMeeting: function (id, title, by) { return call(meeting(id) + '/title', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: title, editedBy: by }) }); },
+    /** Recent approvals, emails, edits and failures, newest first. */
+    activity: function (limit) { return call('/api/activity?limit=' + (limit || 10)); },
     progress: function (uploadId) { return call('/api/meetings/progress/' + encodeURIComponent(uploadId)); },
     draft: draft,
     saveMinutes: function (id, edits) { return post(meeting(id) + '/minutes', edits); },

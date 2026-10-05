@@ -12,7 +12,7 @@ import path from 'path';
 import { ProviderNotConfiguredError, RecipientProblemError, RunNotFoundError, StageOrderError } from './errors';
 import { JsonFileMap } from './jsonFileMap';
 import { ActionItemListItem, listMeetings, listTrackedActionItems, MeetingListItem } from './meetingQueries';
-import { amendApprovedMinutes, correctTranscript, replaceDraft, sendUpdatedMinutes, UpdatedMinutesResult } from './minutesAmendments';
+import { amendApprovedMinutes, correctTranscript, pipelineActivity, PipelineActivity, renameMeeting, replaceDraft, sendUpdatedMinutes, UpdatedMinutesResult } from './minutesAmendments';
 import { DraftMinutes } from '../reviewGate/types';
 import { DiarizedSegment } from '../diarization/types';
 import { MinutesEdits, reviseMinutes } from './minutesEditing';
@@ -71,6 +71,10 @@ export interface MeetingPipeline {
   amendApprovedMinutes(runId: string, draft: DraftMinutes): void;
   /** Replaces the transcript lines (corrected words / speaker names). */
   correctTranscript(runId: string, segments: DiarizedSegment[]): void;
+  /** Renames a meeting (draft and approved record). */
+  renameMeeting(runId: string, title: string, editedBy?: string): PipelineRunView;
+  /** Drafts ready, approvals, and sends, for "Recent activity". */
+  activity(): PipelineActivity[];
   /** Emails "Updated minutes" once per amended version (draft-only mode drafts without sending). */
   sendUpdatedMinutes(runId: string, version: number, reason: string, by: string): Promise<UpdatedMinutesResult>;
 }
@@ -272,6 +276,8 @@ export function createMeetingPipeline(
       reviseMinutes(stores, runId, edits, editedBy);
       return getRun(runId);
     },
+    renameMeeting: (runId, title, editedBy) => { renameMeeting(stores, runId, title, editedBy); return getRun(runId); },
+    activity: () => pipelineActivity(stores),
     replaceDraft: (runId, draft, editedBy) => replaceDraft(stores, runId, draft, editedBy),
     amendApprovedMinutes: (runId, draft) => amendApprovedMinutes(stores, runId, draft),
     correctTranscript: (runId, segments) => correctTranscript(stores, runId, segments),

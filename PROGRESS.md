@@ -3276,3 +3276,28 @@
     reports out-of-date translations, but there are no translations to mark. Full real-time
     co-editing is planned only (see summary). Existing tests updated to the new editor (journey,
     spell check); the page harness now maps /vendor/quill and stubs Range geometry for jsdom.
+
+- [x] Dashboard UI/UX upgrade — review focus, status lifecycle, clickable table, real stat cards, header
+  - Date: 2026-10-05
+  - Session: CC-20261004-k7q2
+  - What changed: Meetings dashboard split into `public/js/dashboard/{stats,table,activity}.js` +
+    `styles/dashboard.css`. Pending card with accent border + "Review now" (or "All caught up");
+    tabs Needs review / Approved / All with counts (ARIA tablist, arrow keys; defaults to Needs
+    review when any). Status badges are icon + text for processing → needs_review → emails_drafted
+    → approved (draft-only) / sent, plus failed. Table: date with "time · duration", avatar stacks,
+    Action items column, whole row focusable/clickable (Enter/Space), inline rename (pencil, Enter
+    saves, Esc cancels) via new PATCH /api/meetings/:runId/title. Stat cards: real range selector
+    (This week / This month / All time) with a previous-period comparison, cards filter or navigate,
+    second lines only from real data. Header: one primary "New meeting" split button (upload / record
+    in person / record online), "View calendar" ghost; Commands palette removed (Ctrl K = search,
+    whose results include commands); help menu + avatar menu (name, Settings). Sidebar "Change in
+    Settings" link; "Draft-only" badge next to both approve buttons. New GET /api/activity powers
+    "Recent activity". List items gain time, durationMs, emails_drafted; failed live recordings are
+    listed (retry from the row). `--color-text-subtle` light → #636a76 (WCAG AA).
+  - Verification: new routes/dashboard.test.ts (10) and dashboardUi.integration.test.ts (9: badges,
+    tabs/filters, clickable rows, rename, stat cards, activity, settings link); updated header,
+    calendar, sync, people, recording, mobile and journey tests; full suite 494 passed (1 skipped);
+    `tsc --noEmit` passes; headless Chrome screenshots at 1280px and 375px, light and dark, no
+    horizontal scroll.
+  - Notes: No sign-out item (the app has no accounts). "Approved" tab includes Emails drafted
+    (minutes approved, email awaiting approval). Failed-recording time is UTC from the server.

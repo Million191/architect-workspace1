@@ -38,7 +38,6 @@
   .cal-list-row > .participants { display: inline-flex; margin-left: auto; }
   .cal-list-row > :nth-child(3) { display: inline-flex; }
   #searchOpen { margin-left: auto; }
-  #paletteButton { display: none; }
   .topbar-right { margin-left: 0; }
 
   /* Bottom navigation */
@@ -70,7 +69,7 @@
   .btn { height: 44px; }
   .btn-sm { height: 44px; min-width: 44px; padding: 0 12px; }
   .input, .chip-input { min-height: 44px; }
-  .nav-link, .menu-item, .palette-item, .recipient, .cal-list-row { min-height: 44px; }
+  .nav-link, .menu-item, .recipient, .cal-list-row { min-height: 44px; }
   button.avatar-stack { min-height: 44px; min-width: 44px; }
   .checkbox { width: 22px; height: 22px; }
   .cal-toggles label, .segmented label { min-height: 44px; }

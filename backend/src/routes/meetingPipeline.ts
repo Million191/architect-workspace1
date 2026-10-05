@@ -5,6 +5,7 @@ import { MeetingPipeline } from '../services/meetingPipeline/meetingPipelineServ
 import { PipelineStageFailedError, ProviderNotConfiguredError, RecipientProblemError } from '../services/meetingPipeline/errors';
 import { errorClassOf } from '../services/meetingPipeline/runStage';
 import { UploadProgressTracker } from '../services/meetingPipeline/uploadProgress';
+import { RecordingMeta } from '../services/recording/types';
 import { ScheduleService } from '../services/schedule/scheduleService';
 import { ScheduleError } from '../services/schedule/errors';
 
@@ -77,6 +78,11 @@ const editsSchema = z.object({
     .max(500),
 });
 
+const titleSchema = z.object({
+  title: z.string().trim().min(1, 'Give the meeting a title.').max(300).regex(/^[^\r\n<>]+$/, 'Titles can’t contain line breaks or < >.'),
+  editedBy: z.string().trim().max(200).optional(),
+}).strict();
+
 const approvalSchema = z.object({ approvedBy: z.string().trim().min(1, 'approvedBy is required.').max(200) });
 
 const STATUS_BY_ERROR_CLASS: Record<string, number> = {
@@ -118,6 +124,8 @@ export interface MeetingPipelineRouterDeps {
   schedule?: ScheduleService;
   /** Shared with live recordings so one progress endpoint serves both. */
   progress?: UploadProgressTracker;
+  /** Live recordings whose processing failed, listed with status "failed" so they can be retried. */
+  failedRecordings?: () => RecordingMeta[];
 }
 
 export function createMeetingPipelineRouter(deps: MeetingPipelineRouterDeps): Router {
@@ -212,7 +220,11 @@ export function createMeetingPipelineRouter(deps: MeetingPipelineRouterDeps): Ro
 
   // Read-only list of meetings for the dashboard.
   router.get('/', (_req: Request, res: Response) => {
-    res.status(200).json({ meetings: deps.pipeline!.listMeetings() });
+    const failed = (deps.failedRecordings?.() ?? []).map((r) => ({
+      runId: null, recordingId: r.id, title: r.title, date: r.createdAt.slice(0, 10), time: r.createdAt.slice(11, 16), durationMs: r.durationMs,
+      participants: r.attendees.map((a) => a.name), people: r.attendees, stage: 'failed', status: 'failed', actionItemCount: 0, error: r.error?.message, chunkCount: r.chunks.length,
+    }));
+    res.status(200).json({ meetings: [...failed, ...deps.pipeline!.listMeetings()] });
   });
 
   // Read-only list of tracked action items across meetings.
@@ -230,6 +242,21 @@ export function createMeetingPipelineRouter(deps: MeetingPipelineRouterDeps): Ro
     try {
       const { editedBy, ...edits } = body.data;
       res.status(200).json(deps.pipeline!.reviseMinutes(req.params.runId, edits, editedBy));
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  // Inline rename from the meetings list.
+  router.patch('/:runId/title', (req: Request, res: Response) => {
+    const body = titleSchema.safeParse(req.body ?? {});
+    if (!body.success) {
+      res.status(400).json({ error: 'ValidationError', message: body.error.issues.map((i) => i.message).join(' ') });
+      return;
+    }
+    try {
+      const run = deps.pipeline!.renameMeeting(req.params.runId, body.data.title, body.data.editedBy);
+      res.status(200).json({ runId: run.runId, title: run.minutes.meetingSummary.title });
     } catch (error) {
       sendError(res, error);
     }

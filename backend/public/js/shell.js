@@ -1,4 +1,4 @@
-// Meeting Assistant — app shell: sidebar navigation, top-bar search, avatar, theme, ⌘K command palette.
+// Meeting Assistant — app shell: sidebar navigation, top-bar search (⌘K), help and account menus, theme.
 (function () {
   var ui = MA.ui, el = ui.el, append = ui.append, store = MA.store;
   var NAV = [
@@ -35,14 +35,16 @@
       var draftOnly = s.status.emailMode === 'draft-only';
       var pill = append(el('div', null, 'mode-pill', { title: draftOnly ? 'Email delivery is off for this demo. Drafts are created for human review.' : 'Approved minutes are emailed to participants.' }),
         MA.icon(draftOnly ? 'shield-check' : 'send'),
-        append(el('div'), el('strong', draftOnly ? 'Draft-only mode' : 'Email delivery on'), draftOnly ? 'Emails are drafted, never sent.' : 'Sent after final approval.'));
+        append(el('div'), el('strong', draftOnly ? 'Draft-only mode' : 'Email delivery on'), draftOnly ? 'Emails are drafted, never sent.' : 'Sent after final approval.',
+          append(el('a', null, 'mode-link', { href: '?page=settings', id: 'modeSettingsLink' }), 'Change in Settings')));
+      pill.querySelector('.mode-link').addEventListener('click', function (e) { e.preventDefault(); go('settings'); });
       foot.appendChild(pill);
     }
   }
 
   /**
    * Phone navigation (below 640px): Meetings, Action items, Record, Settings. "Record" opens the same
-   * recording menu as the header. People is reached from Settings and the command palette.
+   * recording menu as the header. People is reached from Settings and the search box.
    */
   var BOTTOM = [
     { page: 'meetings', label: 'Meetings', icon: 'messages-square', match: ['meetings', 'upload', 'processing', 'review', 'send'] },
@@ -121,13 +123,39 @@
   function renderTopbar(s) {
     var avatar = document.getElementById('avatar');
     avatar.textContent = ui.initials(s.form.reviewer);
-    avatar.setAttribute('aria-label', s.form.reviewer ? 'Reviewer: ' + s.form.reviewer : 'Reviewer name not set');
+    avatar.setAttribute('aria-label', 'Account menu' + (s.form.reviewer ? ' — ' + s.form.reviewer : ' — name not set'));
     avatar.title = s.form.reviewer || 'Set your name in Settings';
-
   }
 
-  // ---- Command palette (⌘K / Ctrl+K) -----------------------------------------------------------
-  var paletteReturnFocus = null;
+  // ---- Help and account menus (top bar) ----------------------------------------------------------
+  function infoDialog(title, rows) {
+    var list = el('dl', null, 'help-list');
+    rows.forEach(function (r) { append(list, el('dt', r[0]), el('dd', r[1])); });
+    MA.cal.dialog.open({ title: title, body: list, variant: 'dialog', actions: [ui.button('Close', 'secondary', function () { MA.cal.dialog.close(); }, { id: 'helpClose' })], initialFocus: '#helpClose' });
+  }
+  function helpItems() {
+    var mod = /Mac|iPhone|iPad/.test(navigator.platform || '') ? '⌘' : 'Ctrl ';
+    return [
+      { label: 'Keyboard shortcuts', icon: 'keyboard', id: 'helpShortcuts', run: function () {
+        infoDialog('Keyboard shortcuts', [[mod + 'K', 'Search meetings, transcripts, action items, and commands'], ['Enter', 'Open the selected meeting row'], ['← →', 'Move between the meeting tabs'], ['Esc', 'Close a menu, dialog, or the calendar']]);
+      } },
+      { label: 'How it works', icon: 'circle-help', id: 'helpHowItWorks', run: function () {
+        infoDialog('How it works', [['1. Add a meeting', 'Upload a recording or record one here.'], ['2. Review the draft', 'AI drafts the minutes and action items; you edit and approve them.'], ['3. Approve the email', 'Check the email to participants and approve it.'], ['4. Delivery', store.get().status && store.get().status.emailMode === 'draft-only' ? 'Draft-only mode is on, so emails are drafted but never sent.' : 'Approved emails are sent to every participant.']]);
+      } },
+    ];
+  }
+  function accountItems(actions) {
+    var name = (store.get().form.reviewer || '').trim();
+    return [
+      { label: name || 'Set your name', hint: name ? 'Your name on approvals — change it in Settings' : 'Recorded on every approval', icon: 'user', id: 'accountProfile', run: function () {
+        actions.go('settings');
+        setTimeout(function () { var f = document.getElementById('settingsName'); if (f) f.focus(); }, 0);
+      } },
+      { label: 'Settings', icon: 'settings-2', id: 'accountSettings', run: function () { actions.go('settings'); } },
+    ];
+  }
+
+  /** Commands offered in the top-bar search results (Ctrl K focuses the search box). */
   function commands(actions) {
     var s = store.get();
     var list = [
@@ -143,48 +171,6 @@
       list.push({ group: 'Meetings', label: m.title || 'Untitled meeting', hint: ui.longDate(m.date), icon: 'file-text', run: function () { actions.openMeeting(m.runId); } });
     });
     return list;
-  }
-
-  function openPalette(actions) {
-    var host = document.getElementById('palette');
-    paletteReturnFocus = document.activeElement;
-    var all = commands(actions), selected = 0, shown = all;
-    var backdrop = el('div', null, 'palette-backdrop');
-    var dialog = el('div', null, 'palette', { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Command palette' });
-    var input = el('input', null, null, { type: 'text', placeholder: 'Type a command or search meetings…', 'aria-label': 'Command', role: 'combobox', 'aria-expanded': 'true', 'aria-controls': 'paletteList', autocomplete: 'off' });
-    var list = el('ul', null, 'palette-list', { id: 'paletteList', role: 'listbox' });
-    function close() { host.hidden = true; host.replaceChildren(); if (paletteReturnFocus && paletteReturnFocus.focus) paletteReturnFocus.focus(); }
-    function choose(i) { var c = shown[i]; close(); if (c) c.run(); }
-    function draw() {
-      var q = input.value.trim().toLowerCase();
-      shown = all.filter(function (c) { return !q || c.label.toLowerCase().indexOf(q) !== -1; });
-      selected = Math.min(selected, Math.max(0, shown.length - 1));
-      list.replaceChildren();
-      if (!shown.length) { list.appendChild(el('li', 'No results for “' + input.value + '”', 'palette-empty')); return; }
-      var lastGroup = null;
-      shown.forEach(function (c, i) {
-        if (c.group !== lastGroup) { list.appendChild(el('li', c.group, 'palette-group', { role: 'presentation' })); lastGroup = c.group; }
-        var item = append(el('li', null, 'palette-item', { role: 'option', id: 'palette-opt-' + i, 'aria-selected': String(i === selected) }), MA.icon(c.icon), el('span', c.label), c.hint ? el('span', c.hint, 'hint') : null);
-        item.addEventListener('mousemove', function () { if (selected !== i) { selected = i; draw(); } });
-        item.addEventListener('click', function () { choose(i); });
-        list.appendChild(item);
-      });
-      input.setAttribute('aria-activedescendant', 'palette-opt-' + selected);
-    }
-    input.addEventListener('input', function () { selected = 0; draw(); });
-    dialog.addEventListener('keydown', function (e) {
-      if (e.key === 'ArrowDown') { e.preventDefault(); selected = (selected + 1) % Math.max(1, shown.length); draw(); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); selected = (selected - 1 + shown.length) % Math.max(1, shown.length); draw(); }
-      else if (e.key === 'Enter') { e.preventDefault(); choose(selected); }
-      else if (e.key === 'Escape') { e.preventDefault(); close(); }
-      else if (e.key === 'Tab') { e.preventDefault(); input.focus(); } // focus stays inside the dialog
-    });
-    backdrop.addEventListener('mousedown', function (e) { if (e.target === backdrop) close(); });
-    append(dialog, append(el('div', null, 'palette-input'), MA.icon('search'), input), list);
-    host.replaceChildren(append(backdrop, dialog));
-    host.hidden = false;
-    draw();
-    input.focus();
   }
 
   MA.shell = {
@@ -209,7 +195,13 @@
       search.addEventListener('keydown', function (e) {
         if (e.key === 'Escape') { e.preventDefault(); if (!panel.hidden) hidePanel(); else { search.value = ''; search.blur(); } }
       });
-      document.getElementById('paletteButton').addEventListener('click', function () { openPalette(actions); });
+      var help = document.getElementById('helpButton'), avatar = document.getElementById('avatar');
+      help.appendChild(MA.icon('circle-help', 'icon-lg'));
+      help.addEventListener('click', function () { MA.menu.open(help, helpItems()); });
+      avatar.addEventListener('click', function () { MA.menu.open(avatar, accountItems(actions)); });
+      [help, avatar].forEach(function (b) {
+        b.addEventListener('keydown', function (e) { if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && !MA.menu.isOpen()) { e.preventDefault(); b.click(); } });
+      });
       // Ctrl K / ⌘K: the search box (its hint shows the shortcut); on phones, the full-screen search.
       document.addEventListener('keydown', function (e) {
         if (!((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k')) return;
@@ -222,6 +214,5 @@
     openSearchOverlay: openSearchOverlay,
     closeSearchOverlay: closeSearchOverlay,
     applyTheme: applyTheme,
-    openPalette: openPalette,
   };
 })();

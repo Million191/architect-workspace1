@@ -1,13 +1,22 @@
 import { MeetingPipelineStores, PipelineRunView, PipelineStage } from './types';
 
-/** Status shown in the meetings list. Derived only from the run's real stage — never guessed. */
-export type MeetingStatus = 'needs_review' | 'approved' | 'sent';
+/**
+ * Status shown in the meetings list, derived only from the run's real stage — never guessed:
+ * needs_review (minutes waiting for approval) → emails_drafted (minutes approved; the email drafts
+ * are waiting for the final approval) → approved (final approval, draft-only: nothing sent) or sent.
+ * "processing" and "failed" exist only on the page / for live recordings, not for pipeline runs.
+ */
+export type MeetingStatus = 'needs_review' | 'emails_drafted' | 'approved' | 'sent';
 
 export interface MeetingListItem {
   runId: string;
   title?: string;
   /** Meeting date (YYYY-MM-DD) from the meeting summary, when known. */
   date?: string;
+  /** Start time ("14:05", 24-hour) from the meeting summary, when known. */
+  time?: string;
+  /** Length of the recording, from the end of the transcript. */
+  durationMs?: number;
   participants: string[];
   /** Participants with their address when one was given at upload — the key into the People list. */
   people: Array<{ name: string; email?: string }>;
@@ -30,6 +39,7 @@ export interface ActionItemListItem {
 function statusOf(stage: PipelineStage): MeetingStatus {
   if (stage === 'sent') return 'sent';
   if (stage === 'approved_not_sent') return 'approved';
+  if (stage === 'emails_pending_approval') return 'emails_drafted';
   return 'needs_review';
 }
 
@@ -53,6 +63,8 @@ export function listMeetings(stores: MeetingPipelineStores, getRun: (runId: stri
       runId,
       title: summary.title,
       date: summary.date,
+      time: summary.time,
+      durationMs: run.transcript.length ? Math.max(...run.transcript.map((s) => s.endMs ?? s.startMs)) : undefined,
       participants: summary.attendees,
       people: summary.attendees.map((name) => ({ name, email: run.recipients?.[name] })),
       stage: run.stage,

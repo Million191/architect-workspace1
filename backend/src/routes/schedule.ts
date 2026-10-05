@@ -29,7 +29,7 @@ const timeZone = z.string().max(64).refine((tz) => { try { new Intl.DateTimeForm
 
 const STATUS: Record<string, number> = { MeetingNotFoundError: 404, InvalidTransitionError: 409, StaleVersionError: 409, ScheduleValidationError: 400 };
 
-export type DisplayStatus = 'upcoming' | 'postponed' | 'cancelled' | 'needs_review' | 'approved' | 'sent';
+export type DisplayStatus = 'upcoming' | 'postponed' | 'cancelled' | 'needs_review' | 'emails_drafted' | 'approved' | 'sent';
 
 export interface ScheduleRouterDeps {
   schedule?: ScheduleService;
@@ -63,7 +63,7 @@ export function createScheduleRouter(deps: ScheduleRouterDeps): Router {
     if (m.runId && deps.pipeline) {
       try {
         const stage = deps.pipeline.getRun(m.runId).stage;
-        display = stage === 'sent' ? 'sent' : stage === 'approved_not_sent' ? 'approved' : 'needs_review';
+        display = stage === 'sent' ? 'sent' : stage === 'approved_not_sent' ? 'approved' : stage === 'emails_pending_approval' ? 'emails_drafted' : 'needs_review';
       } catch { /* recording draft no longer in memory: show the schedule status */ }
     }
     const { previous: _p, ...rest } = m;

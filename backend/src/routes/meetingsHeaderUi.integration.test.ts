@@ -5,7 +5,7 @@ import { createMeetingPipeline, createPipelineStores } from '../services/meeting
 import { createDemoProviders } from '../services/meetingPipeline/demoProviders';
 import { openPage, Page, text, waitFor } from './__testutils__/pageHarness';
 
-/** Meetings header: "View calendar", "Record meeting" menu, mobile "More" menu, and the search placeholder. */
+/** Meetings header: "View calendar", the "New meeting" split button, mobile "More" menu, help and account menus, search placeholder. */
 function server() {
   const providers = Object.assign(createDemoProviders(), { mode: 'live' as const, emailMode: 'draft-only' as const });
   return createApp({
@@ -28,11 +28,12 @@ beforeAll(() => {
 afterEach(() => pages.splice(0).forEach((p) => p.close()));
 
 describe('Meetings header actions', () => {
-  it('“View calendar” opens and closes the week panel, stays in sync with the summary card, and swaps its label', async () => {
+  it('“View calendar” is a ghost button that opens and closes the week panel and swaps its label', async () => {
     const page = track(openPage(server()));
     await waitFor(() => !!byId(page, 'viewCalendar'), 'the header');
     const viewCalendar = () => byId<HTMLButtonElement>(page, 'viewCalendar');
     expect(text(page, '#viewCalendar')).toBe('View calendar');
+    expect(viewCalendar().className).toContain('btn-ghost');
     expect(viewCalendar().getAttribute('aria-controls')).toBe('weekCalendar');
     expect(viewCalendar().getAttribute('aria-expanded')).toBe('false');
 
@@ -40,59 +41,57 @@ describe('Meetings header actions', () => {
     await waitFor(() => !!byId(page, 'weekCalendar'), 'panel open');
     expect(text(page, '#viewCalendar')).toBe('Hide calendar');
     expect(viewCalendar().getAttribute('aria-expanded')).toBe('true');
-    expect(byId(page, 'weekCard').getAttribute('aria-expanded')).toBe('true');
 
-    // Closing from the button returns focus to the button, not the card.
+    // Closing from the button returns focus to the button.
     viewCalendar().focus();
     viewCalendar().click();
     await waitFor(() => !byId(page, 'weekCalendar'), 'panel closed');
     expect(text(page, '#viewCalendar')).toBe('View calendar');
     expect(page.doc.activeElement).toBe(viewCalendar());
-
-    // The summary card is the same toggle.
-    byId<HTMLButtonElement>(page, 'weekCard').click();
-    await waitFor(() => text(page, '#viewCalendar') === 'Hide calendar', 'label follows the card');
   });
 
-  it('“Record meeting” is a keyboard-operable menu with both recording options', async () => {
+  it('one primary “New meeting” split button: the main part uploads, the ▾ menu offers upload and both recording options', async () => {
     const page = track(openPage(server()));
-    await waitFor(() => !!byId(page, 'recordMeeting'), 'the header');
-    const record = byId<HTMLButtonElement>(page, 'recordMeeting');
-    expect(record.getAttribute('aria-haspopup')).toBe('menu');
-    expect(record.className).toContain('btn-secondary');
-    expect(byId(page, 'primaryAction').textContent).toBe('Upload meeting');
-    expect(byId(page, 'primaryAction').className).toContain('btn-primary');
+    await waitFor(() => !!byId(page, 'newMeetingMenu'), 'the header');
+    // Exactly one primary button in the header; no “Commands” button any more.
+    expect(page.doc.querySelectorAll('.page-header .btn-primary:not(.split-caret)')).toHaveLength(1);
+    expect(byId(page, 'primaryAction').textContent).toBe('New meeting');
+    expect(page.doc.getElementById('paletteButton')).toBeNull();
+    const caret = byId<HTMLButtonElement>(page, 'newMeetingMenu');
+    expect(caret.getAttribute('aria-haspopup')).toBe('menu');
+    expect(caret.getAttribute('aria-label')).toBe('More ways to add a meeting');
 
-    key(page, record, 'ArrowDown');
-    expect(record.getAttribute('aria-expanded')).toBe('true');
-    expect(menuLabels(page)).toEqual(['In-person meeting', 'Online meeting on this computer']);
+    key(page, caret, 'ArrowDown');
+    expect(caret.getAttribute('aria-expanded')).toBe('true');
+    expect(menuLabels(page)).toEqual(['Upload file', 'Record in person', 'Record an online meeting']);
     const items = page.doc.querySelectorAll('[role="menuitem"]');
     expect(page.doc.activeElement).toBe(items[0]);
-    key(page, items[0], 'ArrowDown');
-    expect(page.doc.activeElement).toBe(items[1]);
-    key(page, items[1], 'ArrowDown');
-    expect(page.doc.activeElement).toBe(items[0]); // wraps
-
-    key(page, items[0], 'Escape');
+    key(page, items[0], 'ArrowUp');
+    expect(page.doc.activeElement).toBe(items[2]); // wraps
+    key(page, items[2], 'Escape');
     expect(page.doc.querySelector('[role="menu"]')).toBeNull();
-    expect(record.getAttribute('aria-expanded')).toBe('false');
-    expect(page.doc.activeElement).toBe(record);
+    expect(page.doc.activeElement).toBe(caret);
 
     // Online capture opens its recorder; jsdom can't capture audio, so the page explains instead of failing silently.
-    record.click();
-    (page.doc.querySelectorAll('[role="menuitem"]')[1] as HTMLButtonElement).click();
+    caret.click();
+    (page.doc.querySelectorAll('[role="menuitem"]')[2] as HTMLButtonElement).click();
     await waitFor(() => text(page, 'h1.page-title') === 'Record an online meeting', 'online recorder');
     expect(text(page, '.callout-danger')).toContain('isn’t supported in this browser');
 
-    // In-person opens the in-person recorder.
     (page.doc.querySelector('.back-link') as HTMLButtonElement).click();
-    await waitFor(() => !!page.doc.getElementById('recordMeeting'), 'back on meetings');
-    (page.doc.getElementById('recordMeeting') as HTMLButtonElement).click();
-    (page.doc.querySelectorAll('[role="menuitem"]')[0] as HTMLButtonElement).click();
+    await waitFor(() => !!page.doc.getElementById('newMeetingMenu'), 'back on meetings');
+    (page.doc.getElementById('newMeetingMenu') as HTMLButtonElement).click();
+    (page.doc.querySelectorAll('[role="menuitem"]')[1] as HTMLButtonElement).click();
     await waitFor(() => text(page, 'h1.page-title') === 'Record an in-person meeting', 'in-person recorder');
+
+    // The main part goes straight to the upload page.
+    (page.doc.querySelector('.back-link') as HTMLButtonElement).click();
+    await waitFor(() => !!page.doc.getElementById('primaryAction'), 'back on meetings');
+    byId<HTMLButtonElement>(page, 'primaryAction').click();
+    await waitFor(() => text(page, 'h1.page-title') === 'Upload meeting', 'upload page');
   });
 
-  it('the mobile “More” menu holds the calendar toggle and both recording options', async () => {
+  it('the mobile “More” menu holds the calendar toggle', async () => {
     const page = track(openPage(server()));
     await waitFor(() => !!byId(page, 'moreActions'), 'the header');
     const more = byId<HTMLButtonElement>(page, 'moreActions');
@@ -101,7 +100,7 @@ describe('Meetings header actions', () => {
     expect(byId(page, 'viewCalendar').className).toContain('wide-only');
 
     more.click();
-    expect(menuLabels(page)).toEqual(['View calendar', 'In-person meeting', 'Online meeting on this computer']);
+    expect(menuLabels(page)).toEqual(['View calendar']);
     (page.doc.querySelector('[role="menuitem"]') as HTMLButtonElement).click();
     await waitFor(() => !!byId(page, 'weekCalendar'), 'panel opened from More');
     byId<HTMLButtonElement>(page, 'moreActions').click();
@@ -109,6 +108,28 @@ describe('Meetings header actions', () => {
     // A second click on the trigger closes the menu (toggle, never two menus).
     byId<HTMLButtonElement>(page, 'moreActions').click();
     expect(page.doc.querySelectorAll('[role="menu"]').length).toBe(0);
+  });
+
+  it('help menu explains shortcuts; the avatar menu reaches your name and Settings', async () => {
+    const page = track(openPage(server()));
+    await waitFor(() => !!byId(page, 'helpButton'), 'the top bar');
+    const help = byId<HTMLButtonElement>(page, 'helpButton');
+    expect(help.getAttribute('aria-label')).toBe('Help');
+    help.click();
+    expect(menuLabels(page)).toEqual(['Keyboard shortcuts', 'How it works']);
+    byId<HTMLButtonElement>(page, 'helpShortcuts').click();
+    await waitFor(() => text(page, '[role="dialog"]').includes('Search meetings'), 'shortcuts dialog');
+    expect(text(page, '[role="dialog"]')).toContain('Open the selected meeting row');
+    byId<HTMLButtonElement>(page, 'helpClose').click();
+
+    const avatar = byId<HTMLButtonElement>(page, 'avatar');
+    expect(avatar.tagName).toBe('BUTTON');
+    expect(avatar.getAttribute('aria-haspopup')).toBe('menu');
+    key(page, avatar, 'ArrowDown');
+    expect(menuLabels(page)).toEqual(['Set your name', 'Settings']);
+    byId<HTMLButtonElement>(page, 'accountProfile').click();
+    await waitFor(() => text(page, 'h1.page-title') === 'Settings', 'settings');
+    await waitFor(() => page.doc.activeElement === byId(page, 'settingsName'), 'name field focused');
   });
 
   it('search uses the new placeholder and keeps its label', async () => {

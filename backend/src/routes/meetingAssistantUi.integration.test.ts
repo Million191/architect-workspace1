@@ -62,7 +62,7 @@ beforeAll(() => {
 afterEach(() => pages.splice(0).forEach((p) => p.close()));
 
 describe('Meeting Assistant — redesigned app', () => {
-  it('upload → processing → review with autosave → send confirmation → approved; lists, palette, theme, refresh; never sends', async () => {
+  it('upload → processing → review with autosave → send confirmation → approved; lists, search commands, theme, refresh; never sends', async () => {
     const dataDir = mkdtempSync(path.join(os.tmpdir(), 'ui2-journey-'));
     const createTransport = jest.spyOn(nodemailer, 'createTransport');
     const { app, send } = server(dataDir);
@@ -70,7 +70,7 @@ describe('Meeting Assistant — redesigned app', () => {
 
     // Dashboard: friendly empty state, zeroed cards, draft-only mode explained.
     await waitFor(() => text(page, '.empty h2') === 'No meetings yet', 'the empty state');
-    expect(text(page, '.stats')).toContain('Pending reviews0');
+    expect(text(page, '#pendingCard-value')).toBe('All caught up'); // zero pending reviews: no "0", a done state
     await waitFor(() => text(page, '.mode-pill').includes('Draft-only mode'), 'the mode pill');
 
     // Upload: validation, then a single submission even when double-clicked.
@@ -162,16 +162,14 @@ describe('Meeting Assistant — redesigned app', () => {
     type(page, '#search', 'project');
     await waitFor(() => text(page, '#searchPanel .search-group').includes('Project Progress'), 'search match');
 
-    // Ctrl K focuses the search; its Commands group reaches Settings → dark theme. The palette stays on its button.
+    // Ctrl K focuses the search; its Commands group reaches Settings → dark theme.
     page.doc.dispatchEvent(new page.dom.window.KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }));
     expect(page.doc.activeElement).toBe(page.doc.getElementById('search'));
     type(page, '#search', 'settings');
     await waitFor(() => text(page, '#searchPanel').includes('Go to settings'), 'command in results');
     page.doc.getElementById('search')!.dispatchEvent(new page.dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     await waitFor(() => title(page) === 'Settings', 'settings via search commands');
-    (page.doc.getElementById('paletteButton') as HTMLButtonElement).click();
-    await waitFor(() => !(page.doc.getElementById('palette') as HTMLElement).hidden, 'the palette');
-    page.doc.querySelector('.palette')!.dispatchEvent(new page.dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(page.doc.getElementById('paletteButton')).toBeNull(); // the search box replaces the old Commands palette
     const dark = page.doc.getElementById('theme-dark') as HTMLInputElement;
     dark.checked = true;
     dark.dispatchEvent(new page.dom.window.Event('change', { bubbles: true }));

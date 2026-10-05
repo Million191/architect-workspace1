@@ -55,8 +55,8 @@ describe('Calendar sync in the app', () => {
   it('Settings shows each provider; Sync calendar in the panel leads there when nothing is connected', async () => {
     const { app } = setup();
     const page = track(openPage(app, '/'));
-    await waitFor(() => !!page.doc.getElementById('weekCard'), 'dashboard');
-    (page.doc.getElementById('weekCard') as HTMLButtonElement).click();
+    await waitFor(() => !!page.doc.getElementById('viewCalendar'), 'dashboard');
+    (page.doc.getElementById('viewCalendar') as HTMLButtonElement).click();
     await waitFor(() => !!page.doc.getElementById('calSync'), 'sync button in the calendar header');
     expect(text(page, '#calSync')).toBe('Sync calendar');
     (page.doc.getElementById('calSync') as HTMLButtonElement).click();
@@ -75,7 +75,7 @@ describe('Calendar sync in the app', () => {
     const page = track(openPage(app, '/?calendarConnected=google'));
     await waitFor(() => text(page, '#toasts').includes('Google Calendar connected and synced'), 'connected toast');
 
-    (page.doc.getElementById('weekCard') as HTMLButtonElement).click();
+    (page.doc.getElementById('viewCalendar') as HTMLButtonElement).click();
     await waitFor(() => !!block(page, 'Partner review'), 'synced meeting in the week');
     const tag = block(page, 'Partner review')!.querySelector('.synced-tag')!;
     expect(tag.textContent).toBe('Google (synced from Google Calendar)');

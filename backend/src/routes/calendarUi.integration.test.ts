@@ -48,7 +48,7 @@ async function schedule(app: Express, title: string, day: number, h: number, min
 
 const pages: Page[] = [];
 const track = (p: Page) => (pages.push(p), p);
-const card = (page: Page) => page.doc.getElementById('weekCard') as HTMLButtonElement;
+const card = (page: Page) => page.doc.getElementById('viewCalendar') as HTMLButtonElement;
 const block = (page: Page, title: string) => Array.from(page.doc.querySelectorAll('.cal-block')).find((b) => b.querySelector('.cal-block-title')?.textContent === title) as HTMLButtonElement | undefined;
 
 beforeAll(() => {
@@ -58,7 +58,7 @@ beforeAll(() => {
 afterEach(() => pages.splice(0).forEach((p) => p.close()));
 
 describe('This week calendar — open and view', () => {
-  it('opens from the summary card, shows real meetings, switches views, and closes with X or Esc', async () => {
+  it('opens from “View calendar”, shows real meetings, switches views, and closes with X or Esc', async () => {
     const app = server();
     await schedule(app, 'Q4 budget review', 1, 10);
     await schedule(app, 'Design review', 1, 10, 30); // overlaps → side by side
@@ -70,7 +70,7 @@ describe('This week calendar — open and view', () => {
     expect(page.doc.getElementById('weekCalendar')).toBeNull();
     expect(card(page).getAttribute('aria-expanded')).toBe('false');
     expect(card(page).getAttribute('aria-controls')).toBe('weekCalendar');
-    await waitFor(() => text(page, '#weekCard .stat-value') === '2', 'count excludes the cancelled meeting');
+    await waitFor(() => text(page, '#meetingsCard-value') === '2', 'count excludes the cancelled meeting');
 
     card(page).click();
     await waitFor(() => !!block(page, 'Q4 budget review'), 'meeting blocks');
@@ -111,7 +111,7 @@ describe('This week calendar — open and view', () => {
     (Array.from(page.doc.querySelectorAll('.cal-head button')).find((b) => b.textContent === 'Today') as HTMLButtonElement).click();
     await waitFor(() => text(page, '#calHeading') === 'This week' && !!page.doc.querySelector('.cal-list-row'), 'back to this week');
 
-    // Esc closes the panel and returns focus to the card; X does too
+    // Esc closes the panel and returns focus to “View calendar”; X does too
     page.doc.dispatchEvent(new page.dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await waitFor(() => !page.doc.getElementById('weekCalendar'), 'panel closed by Esc');
     expect(page.doc.activeElement).toBe(card(page));
@@ -159,7 +159,7 @@ describe('This week calendar — add meetings', () => {
   it('“New meeting” (keyboard path): validates inline, adds participants as chips, saves, toasts, and updates the count', async () => {
     const app = server();
     const page = await openCalendar(app);
-    await waitFor(() => text(page, '#weekCard .stat-value') === '0', 'count 0');
+    await waitFor(() => text(page, '#meetingsCard-value') === '0', 'count 0');
     (page.doc.getElementById('calNew') as HTMLButtonElement).click();
     await waitFor(() => text(page, '[role="dialog"] h2') === 'New meeting', 'the form');
     expect(page.doc.activeElement).toBe(input(page, 'calTitle'));
@@ -194,7 +194,7 @@ describe('This week calendar — add meetings', () => {
     await waitFor(() => text(page, '#toasts').includes('Meeting added'), 'toast');
     await waitFor(() => !page.doc.querySelector('[role="dialog"]') && !!block(page, 'Weekly team sync'), 'new block');
     expect(block(page, 'Weekly team sync')!.className).toContain('is-upcoming');
-    await waitFor(() => text(page, '#weekCard .stat-value') === '1', 'count updated');
+    await waitFor(() => text(page, '#meetingsCard-value') === '1', 'count updated');
   });
 
   it('clicking an empty slot pre-fills that day and time; dragging pre-fills start and end with a live preview', async () => {

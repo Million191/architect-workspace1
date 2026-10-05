@@ -108,6 +108,11 @@ export function createRecordingService(opts: { store: RecordingStore; now?: () =
       }
     },
 
+    /** Recordings whose processing failed and that haven't become a meeting (shown as "Failed"). */
+    listFailed(): RecordingMeta[] {
+      return store.list().filter((m) => m.status === 'failed' && !m.runId);
+    },
+
     findByRun(runId: string): RecordingMeta | undefined {
       return store.list().find((m) => m.runId === runId);
     },

@@ -31,7 +31,7 @@
         back: { label: 'Back to review', onClick: function () { ctx.actions.go('review'); } },
         meta: append(el('div', null, 'meta'), ui.badge(MA.statusOf(run.stage)),
           el('span', approved ? 'Approved minutes and email' : draftOnly ? 'Email delivery is off — approving records your sign-off; nothing is sent.' : 'Check exactly what each participant will receive.')),
-        actions: [approved ? null : el('span', 'Approval 2 of 2', 'gate-label'), primary].filter(Boolean),
+        actions: [approved ? null : el('span', 'Approval 2 of 2', 'gate-label'), !approved && draftOnly ? ui.draftOnlyBadge() : null, primary].filter(Boolean),
       }));
 
       if (approved) {

@@ -43,7 +43,7 @@ export function openPage(app: Express, pathAndQuery = '/', beforeScripts?: (win:
     const method = (options.method ?? 'GET').toUpperCase();
     calls.push(`${method} ${url}`);
     const agent = request(app);
-    let req = method === 'POST' ? agent.post(url) : method === 'PUT' ? agent.put(url) : method === 'DELETE' ? agent.delete(url) : agent.get(url);
+    let req = method === 'POST' ? agent.post(url) : method === 'PUT' ? agent.put(url) : method === 'DELETE' ? agent.delete(url) : method === 'PATCH' ? agent.patch(url) : agent.get(url);
     if (options.body instanceof win.FormData) {
       for (const [key, value] of (options.body as unknown as Iterable<[string, string | File]>)) {
         if (typeof value === 'string') req = req.field(key, value);

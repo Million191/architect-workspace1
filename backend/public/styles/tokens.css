@@ -60,7 +60,8 @@
   --color-border-strong: #d4d7de;
   --color-text: #16181d;
   --color-text-muted: #5b616e;
-  --color-text-subtle: #8a909c;
+  /* #636a76: ≥ 4.5:1 (WCAG AA) on every light surface it sits on (white, bg, subtle, hover, accent-subtle). */
+  --color-text-subtle: #636a76;
   --color-accent: #5b5bd6;
   --color-accent-hover: #4b4bc4;
   --color-accent-fg: #ffffff;

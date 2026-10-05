@@ -34,8 +34,10 @@
     },
     /** Calendar sync status ({ status, syncing, unavailable }), from /api/calendar/connections. */
     calendarSync: null,
-    /** Current week's schedule, for the dashboard count. */
-    weekSummary: null,
+    /** Dashboard: Meetings-card period, its counts, the chosen tab (null = automatic), and the period filter. */
+    dash: { range: 'week', counts: null, tab: null, rangeFilter: false },
+    /** Recent activity ({ items, total, shown }), from /api/activity. */
+    activity: null,
     /** True while a request that changes something is in flight — blocks double submissions. */
     busy: false,
   };
@@ -53,21 +55,29 @@
   };
 
   /** One status vocabulary for the whole app (dashboard, calendar, review, send). Always a text label, never colour alone. */
+  // Each status has an icon and a text label, so it never relies on colour alone.
+  // Meeting lifecycle: processing → needs_review → emails_drafted → approved (draft-only) | sent; or failed.
   var DISPLAY = {
-    upcoming: { label: 'Upcoming', kind: 'accent' },
-    postponed: { label: 'Postponed', kind: 'accent' },
-    cancelled: { label: 'Cancelled', kind: 'neutral' },
-    processing: { label: 'Processing', kind: 'neutral' },
-    needs_review: { label: 'Needs review', kind: 'warning' },
-    approved: { label: 'Approved', kind: 'success' },
-    sent: { label: 'Sent', kind: 'success' },
+    upcoming: { label: 'Upcoming', kind: 'accent', icon: 'calendar' },
+    postponed: { label: 'Postponed', kind: 'accent', icon: 'calendar-clock' },
+    cancelled: { label: 'Cancelled', kind: 'neutral', icon: 'ban' },
+    processing: { label: 'Processing', kind: 'neutral', icon: 'refresh-cw' },
+    needs_review: { label: 'Needs review', kind: 'warning', icon: 'clock' },
+    emails_drafted: { label: 'Emails drafted', kind: 'accent', icon: 'mail' },
+    approved: { label: 'Approved', kind: 'success', icon: 'check' },
+    sent: { label: 'Sent', kind: 'success', icon: 'send' },
+    failed: { label: 'Failed', kind: 'danger', icon: 'circle-alert' },
   };
   MA.displayStatus = function (display) { return DISPLAY[display] || DISPLAY.upcoming; };
   /** Status for a processed meeting, from its real server stage. */
   MA.statusOf = function (stage) {
     if (stage === 'sent') return DISPLAY.sent;
     if (stage === 'approved_not_sent' || stage === 'approved') return DISPLAY.approved;
+    if (stage === 'emails_pending_approval' || stage === 'emails_drafted') return DISPLAY.emails_drafted;
     if (stage === 'processing') return DISPLAY.processing;
+    if (stage === 'failed') return DISPLAY.failed;
     return DISPLAY.needs_review;
   };
+  /** Dashboard tabs: which statuses count as "Approved" (minutes approved, whatever happened to the email since). */
+  MA.APPROVED_STATUSES = ['emails_drafted', 'approved', 'sent'];
 })();

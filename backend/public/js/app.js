@@ -53,7 +53,8 @@
     var lists = ['meetings', 'action-items'];
     api.meetings().then(function (m) { setBackground({ meetings: m }, lists); }).catch(function () { setBackground({ meetings: [] }, lists); });
     api.actionItems().then(function (a) { setBackground({ actionItems: a }, lists); }).catch(function () { setBackground({ actionItems: [] }, lists); });
-    if (actions.calLoadSummary) actions.calLoadSummary();
+    actions.calLoadSummary(); // also refreshes the dashboard's Meetings count
+    actions.dashLoadActivity();
     loadPeople();
   }
   function loadPeople() {
@@ -326,6 +327,9 @@
 
   // ---- Start-up ---------------------------------------------------------------------------------
   MA.recordActions.attach(actions, store, api, { loadLists: loadLists });
+  MA.dashboard.attachStats(actions, store, api);
+  MA.dashboard.attachTable(actions, store, api);
+  MA.dashboard.attachActivity(actions, store, api);
   MA.cal.attach(actions, store, api);
   MA.cal.attachAdd(actions, store, api);
   MA.cal.attachRecording(actions, store, api);

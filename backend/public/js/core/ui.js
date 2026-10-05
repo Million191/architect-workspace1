@@ -29,7 +29,19 @@
     if (onClick) b.addEventListener('click', onClick);
     return b;
   }
-  function badge(status) { return el('span', status.label, 'badge badge-' + status.kind); }
+  /** Status badge: icon + text (the icon is decorative; the text is what's read). */
+  function badge(status) {
+    if (!status.icon) return el('span', status.label, 'badge badge-' + status.kind);
+    return append(el('span', null, 'badge badge-icon badge-' + status.kind), MA.icon(status.icon), el('span', status.label));
+  }
+  /** Shown beside approve buttons while email delivery is off: approving never sends anything. */
+  function draftOnlyBadge() {
+    var b = badge({ label: 'Draft-only', kind: 'neutral', icon: 'shield-check' });
+    b.classList.add('draft-only-badge');
+    b.id = 'draftOnlyBadge';
+    b.title = 'Draft-only mode: emails are drafted for review and never sent. Change this in Settings.';
+    return b;
+  }
   function callout(kind, iconName, title, body) {
     var box = el('div', null, 'callout callout-' + kind, { role: kind === 'danger' ? 'alert' : 'status' });
     var text = el('div');
@@ -95,6 +107,6 @@
     return body;
   }
 
-  MA.ui = { el: el, append: append, button: button, badge: badge, callout: callout, pageHeader: pageHeader, clock: clock, bytes: bytes,
+  MA.ui = { el: el, append: append, button: button, badge: badge, draftOnlyBadge: draftOnlyBadge, callout: callout, pageHeader: pageHeader, clock: clock, bytes: bytes,
     longDate: longDate, emptyState: emptyState, toast: toast, initials: initials, emailBody: emailBody };
 })();

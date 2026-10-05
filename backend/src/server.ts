@@ -13,6 +13,7 @@ import { createSpellingRouter } from './routes/spelling';
 import { applyRetention, createRecordingsRouter } from './routes/recordings';
 import { createCalendarSyncRouter, photoRoute } from './routes/calendarSync';
 import { createMinutesRouter } from './routes/minutes';
+import { createActivityRouter } from './routes/activity';
 import { createMinutesDocService, MinutesDocService } from './services/minutesDoc/minutesDocService';
 import { MinutesDocument } from './services/minutesDoc/types';
 import { claudeAssistant, demoAssistant, MinutesAssistant } from './services/minutesDoc/assistant';
@@ -86,7 +87,7 @@ export function createApp(deps: AppDeps = {}): Express {
   app.use('/api/audio', createAudioIngestionRouter());
   app.use('/api/audio', createPhysicalAudioIngestionRouter());
   const progress = new UploadProgressTracker();
-  app.use('/api/meetings', createMeetingPipelineRouter({ pipeline: deps.meetingPipeline, schedule: deps.schedule, progress }));
+  app.use('/api/meetings', createMeetingPipelineRouter({ pipeline: deps.meetingPipeline, schedule: deps.schedule, progress, failedRecordings: deps.recordings ? () => deps.recordings!.listFailed() : undefined }));
   app.use('/api/recordings', createRecordingsRouter({ recordings: deps.recordings, pipeline: deps.meetingPipeline, schedule: deps.schedule, progress, settings: deps.settings ?? new Map() }));
   app.use('/api/schedule', createScheduleRouter({
     schedule: deps.schedule,
@@ -97,6 +98,7 @@ export function createApp(deps: AppDeps = {}): Express {
   }));
 
   const minutes = deps.minutes ?? (deps.meetingPipeline ? createMinutesDocService({ store: new Map<string, MinutesDocument>(), pipeline: deps.meetingPipeline }) : undefined);
+  app.use('/api/activity', createActivityRouter({ pipeline: deps.meetingPipeline, minutes, recordings: deps.recordings }));
   app.use('/api/minutes', createMinutesRouter({ minutes, pipeline: deps.meetingPipeline, assistant: deps.assistant }));
   // The rich-text editor (Quill, BSD-3) served from the installed package — no bundler, no CDN.
   app.use('/vendor/quill', express.static(path.join(__dirname, '..', 'node_modules', 'quill', 'dist'), { index: false }));

@@ -95,3 +95,48 @@ export async function sendUpdatedMinutes(
   }
   return { emails, sentTo, emailMode };
 }
+
+/**
+ * Renames a meeting: the draft under review (via Gate #1's revision history), the approved record,
+ * and an approved review session. Same title again is a no-op. Emails already drafted keep the
+ * subject they were drafted with (they are what was approved).
+ */
+export function renameMeeting(stores: MeetingPipelineStores, runId: string, title: string, editedBy?: string): void {
+  const session = stores.minutesGate.get(runId);
+  const record = stores.finalApprovals.get(runId);
+  if (!session && !record?.minutes) throw new RunNotFoundError(`No meeting found for id "${runId}"`, { runId });
+  if (session && session.draft.meetingSummary.title !== title) {
+    const draft = { ...session.draft, meetingSummary: { ...session.draft.meetingSummary, title } };
+    if (session.status === 'pending_review') requestRevision({ sessionId: runId, changesRequested: `Renamed the meeting to "${title}"`, revisedDraft: draft, requestedBy: editedBy }, { sessionStore: stores.minutesGate });
+    else stores.minutesGate.set(runId, { ...session, draft });
+  }
+  if (record?.minutes && record.minutes.meetingSummary.title !== title) {
+    stores.finalApprovals.set(runId, { ...record, minutes: { ...record.minutes, meetingSummary: { ...record.minutes.meetingSummary, title } } });
+  }
+}
+
+/** One thing that happened to a meeting, for the dashboard's "Recent activity". */
+export interface PipelineActivity {
+  at: string;
+  runId: string;
+  title?: string;
+  kind: 'draft_ready' | 'minutes_approved' | 'final_approved' | 'emails_sent';
+  by?: string;
+  count?: number;
+}
+
+/** What the pipeline's own records say happened: drafts ready, approvals, sends. Read-only. */
+export function pipelineActivity(stores: MeetingPipelineStores): PipelineActivity[] {
+  const out: PipelineActivity[] = [];
+  for (const [runId, s] of stores.minutesGate) {
+    const title = s.draft.meetingSummary.title;
+    out.push({ at: s.submittedAt, runId, title, kind: 'draft_ready' });
+    if (s.approvedAt) out.push({ at: s.approvedAt, runId, title, kind: 'minutes_approved', by: s.approvedBy });
+  }
+  for (const [runId, r] of stores.finalApprovals) {
+    const title = r.minutes?.meetingSummary.title ?? stores.minutesGate.get(runId)?.draft.meetingSummary.title;
+    const sent = [...stores.sentEmails.keys()].filter((k) => k.startsWith(`${runId}:`) && !k.includes(':update:')).length;
+    out.push({ at: r.approvedAt, runId, title, kind: r.emailMode === 'draft-only' ? 'final_approved' : 'emails_sent', by: r.approvedBy, count: r.emailMode === 'draft-only' ? undefined : sent });
+  }
+  return out;
+}
