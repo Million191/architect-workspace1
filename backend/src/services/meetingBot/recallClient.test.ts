@@ -58,11 +58,14 @@ describe('recall client', () => {
     expect(f.calls).toHaveLength(3);
   });
 
-  it('does not retry refusals: 400 → ValidationError, 401 → AuthError naming the env vars', async () => {
+  it('does not retry refusals: 400 → ValidationError, 401 → AuthError, both in plain words (details only in the log)', async () => {
     const f = fakeFetch([res(400, { meeting_url: ['invalid'] }), res(401)]);
     const c = createRecallClient(config, { fetchImpl: f.impl, sleep: noSleep });
-    await expect(c.createBot({ meetingUrl: 'x', botName: 'n', chatMessage: 'm', sessionId: 's' })).rejects.toMatchObject({ errorClass: 'ValidationError' });
-    await expect(c.getBot('b')).rejects.toThrow(/RECALL_API_KEY/);
+    const refused = await c.createBot({ meetingUrl: 'x', botName: 'n', chatMessage: 'm', sessionId: 's' }).catch((e) => e);
+    expect(refused).toMatchObject({ errorClass: 'ValidationError', message: 'The notetaker couldn’t join with this meeting link. Check the link and try again.' });
+    const auth = await c.getBot('b').catch((e) => e);
+    expect(auth).toMatchObject({ errorClass: 'AuthError', message: 'The notetaker service didn’t accept this server’s setup. Ask your administrator to check it.' });
+    expect(`${refused.message} ${auth.message}`).not.toMatch(/RECALL_|meeting_url|invalid/); // no env names or raw provider text
     expect(f.calls).toHaveLength(2);
   });
 

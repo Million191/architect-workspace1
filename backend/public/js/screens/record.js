@@ -42,7 +42,7 @@
     var title = el('input', null, 'input', { type: 'text', maxlength: '300', autocomplete: 'off', placeholder: 'e.g. Weekly team sync' });
     title.value = r.title;
     title.addEventListener('input', function () { a.recSet({ title: title.value }); });
-    var people = el('input', null, 'input', { type: 'text', autocomplete: 'off', placeholder: 'Sara Lee <sara@example.com>, Tom Ward <tom@example.com>' });
+    var people = el('input', null, 'input', { type: 'text', autocomplete: 'off', placeholder: 'Name <name@example.com>, Name <name@example.com>' });
     people.value = r.attendees;
     people.addEventListener('input', function () { a.recSet({ attendees: people.value }); });
 
@@ -59,7 +59,7 @@
 
     var details = append(el('section', null, 'card card-pad', { 'aria-label': 'Meeting details' }),
       field('recTitle', 'Meeting title', title),
-      field('recPeople', 'Participants', people, 'Name and email, separated by commas. They’ll get the approved minutes.'));
+      field('recPeople', 'Participants', people, 'Name and email, separated by commas. They’ll get the reviewed minutes.'));
     var steps = null;
     if (r.mode === 'browser_capture') {
       var mac = /Mac/.test(navigator.platform || '');
@@ -98,7 +98,7 @@
         ui.button('Add marker', 'secondary', function () { a.recOpenMarker(); }, { icon: 'plus', id: 'recMarker', disabled: r.phase === 'stopping' }),
         ui.button('Stop', 'danger', function () { a.recStop(); }, { icon: 'square', id: 'recStop', disabled: r.phase === 'stopping' })));
     if (r.markerOpen) {
-      var note = el('input', null, 'input', { type: 'text', id: 'recMarkerNote', maxlength: '500', placeholder: 'e.g. Decision on budget', autocomplete: 'off' });
+      var note = el('input', null, 'input', { type: 'text', id: 'recMarkerNote', maxlength: '500', placeholder: 'e.g. Budget agreed', autocomplete: 'off' });
       var add = ui.button('Add', 'primary', function () { a.recAddMarker(note.value); }, { size: 'sm' });
       note.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); a.recAddMarker(note.value); } if (e.key === 'Escape') { e.preventDefault(); a.recCloseMarker(); } });
       card.appendChild(append(el('div', null, 'rec-marker-form'), el('label', 'Marker at ' + ui.clock(r.markerAt), 'label', { for: 'recMarkerNote' }), append(el('div', null, 'rec-marker-row'), note, add)));

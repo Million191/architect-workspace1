@@ -52,7 +52,9 @@
 
   /** "AI help" menu in each editable section's header. */
   MA.review.sectionExtras = function (section) {
-    if (!MA.minutes.editable()) return null;
+    // Only while editing (Edit Summary / Edit decisions): the AI never rewrites anything unless asked.
+    var st = MA.store.get();
+    if (!MA.minutes.editable() || (MA.minutes.get().view.state !== 'amending' && !st.editing) || (st.editingSection && st.editingSection !== section.id)) return null;
     return MA.menu.button(null, 'ghost', MODES.map(function (m) { return { label: m[1], hint: m[2], icon: 'sparkles', run: function () { assist(section, m[0], m[1]); } }; }),
       { icon: 'sparkles', size: 'sm', ariaLabel: 'AI help for ' + (section.title || 'this section'), className: 'md-ai' });
   };
@@ -64,7 +66,7 @@
   }
   /** After renaming "Speaker 2" → "Sara Lee": the same swap in the minutes text and owners (as an edit). */
   function updateMinutesNames(from, to) {
-    if (!MA.minutes.editable()) { ui.toast('The minutes are approved — choose “Edit approved minutes” to update names.', 'error'); return; }
+    if (!MA.minutes.editable()) { ui.toast('The minutes are reviewed — choose “Edit reviewed minutes” to update names.', 'error'); return; }
     MA.minutes.edit(function (c) {
       c.sections.forEach(function (s) { s.html = replaceNames(s.html, from, to); s.title = s.title.split(from).join(to); });
       c.actionItems.forEach(function (a) { if (a.owner === from) a.owner = to; a.task = a.task.split(from).join(to); });

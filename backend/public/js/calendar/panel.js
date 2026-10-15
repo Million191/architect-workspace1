@@ -1,7 +1,7 @@
 // Calendar — the "This week" panel under the summary cards: header, toggles, week/list body, legend, TBD list.
 (function () {
   var ui = MA.ui, el = ui.el, append = ui.append, M = MA.cal.model;
-  var LEGEND = ['upcoming', 'needs_review', 'approved', 'sent', 'postponed', 'cancelled'];
+  var LEGEND = ['upcoming', 'needs_review', 'in_progress', 'emails_drafted', 'sent', 'postponed', 'cancelled'];
 
   function narrow() { return !!(window.matchMedia && window.matchMedia('(max-width: 720px)').matches); }
 
@@ -12,7 +12,8 @@
       timed: all.filter(function (m) { return m.start && (cal.showCancelled || m.display !== 'cancelled'); }),
       ghosts: all.filter(function (m) { return m.display === 'postponed' && m.originalStart; }),
       tbd: all.filter(function (m) { return m.display === 'postponed' && !m.start; }),
-      processed: cal.data.processed.map(function (p) { return Object.assign({ display: p.status }, p); }),
+      // Recorded meetings go on their day in the viewer's time zone (the server's date is UTC).
+      processed: cal.data.processed.map(function (p) { return Object.assign({ display: p.status }, p, { date: MA.dashboard.sel.localDay(p) || p.date }); }),
     };
   }
 
@@ -36,9 +37,9 @@
     var head = el('div', null, 'cal-head');
     append(head,
       append(el('div', null, 'cal-title'), append(el('h2', null, null, { id: 'calHeading' }), MA.icon('calendar'), M.weekTitle(weekStart, new Date())), el('span', M.rangeLabel(days[0], days[days.length - 1]), 'cal-range')),
-      ui.button(null, 'ghost', function () { a.calWeek(-1); }, { icon: 'arrow-left', size: 'sm', ariaLabel: 'Previous week' }),
+      ui.button(null, 'ghost', function () { a.calWeek(-1); }, { icon: 'arrow-left', size: 'sm', ariaLabel: 'Previous week', repeatable: true }),
       ui.button('Today', 'secondary', function () { a.calWeek(0); }, { size: 'sm' }),
-      ui.button(null, 'ghost', function () { a.calWeek(1); }, { icon: 'arrow-right', size: 'sm', ariaLabel: 'Next week' }),
+      ui.button(null, 'ghost', function () { a.calWeek(1); }, { icon: 'arrow-right', size: 'sm', ariaLabel: 'Next week', repeatable: true }),
       seg,
       MA.cal.syncControl ? MA.cal.syncControl(MA.store.get(), a) : null,
       a.calNewMeeting ? ui.button('New meeting', 'primary', function () { a.calNewMeeting(); }, { icon: 'plus', size: 'sm', id: 'calNew' }) : null,

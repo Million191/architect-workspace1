@@ -7,7 +7,7 @@ import nodemailer from 'nodemailer';
 import { createApp } from '../server';
 import { createMeetingPipeline, createPipelineStores } from '../services/meetingPipeline/meetingPipelineService';
 import { createDemoProviders } from '../services/meetingPipeline/demoProviders';
-import { chooseFile, openPage, Page, text, type, waitFor } from './__testutils__/pageHarness';
+import { chooseFile, goToStep, openPage, Page, text, type, waitFor } from './__testutils__/pageHarness';
 
 /** Redesigned app, end to end: real page scripts in jsdom + real Express app + real pipeline (stand-in providers, draft-only). */
 function wav(salt: string): Buffer {
@@ -62,7 +62,7 @@ beforeAll(() => {
 afterEach(() => pages.splice(0).forEach((p) => p.close()));
 
 describe('Meeting Assistant — redesigned app', () => {
-  it('upload → processing → review with autosave → send confirmation → approved; lists, search commands, theme, refresh; never sends', async () => {
+  it('upload → processing → review with autosave → send confirmation → reviewed; lists, search commands, theme, refresh; never sends', async () => {
     const dataDir = mkdtempSync(path.join(os.tmpdir(), 'ui2-journey-'));
     const createTransport = jest.spyOn(nodemailer, 'createTransport');
     const { app, send } = server(dataDir);
@@ -77,7 +77,7 @@ describe('Meeting Assistant — redesigned app', () => {
     primary(page).click();
     await waitFor(() => title(page) === 'Upload meeting', 'upload');
     expect(primary(page).disabled).toBe(true);
-    expect(text(page, '#primaryHelp')).toBe('To continue, add a recording, participants, your name.');
+    expect(text(page, '#primaryHelp')).toBe('To continue, add a recording, participants, the reviewer.');
     chooseFile(page, 'notes.txt', Buffer.from('not audio'));
     expect(text(page, '.help-error')).toBe('That file type isn’t supported. Upload an MP3, WAV, M4A, MP4, WebM, or OGG recording.');
     (page.doc.querySelector('[aria-label="Remove notes.txt"]') as HTMLButtonElement).click();
@@ -89,72 +89,75 @@ describe('Meeting Assistant — redesigned app', () => {
     expect(text(page, '.file-name')).toBe('standup.wav');
     expect(text(page, '#avatar')).toBe('M');
     doubleClick(primary(page));
-    await waitFor(() => !!page.doc.getElementById('transcriptHeading'), 'the review screen');
+    await waitFor(() => !!page.doc.querySelector('.wf-steps'), 'the review screen');
     expect(posts(page, '/api/meetings/draft')).toBe(1);
     expect(title(page)).toBe('Project Progress');
     expect(text(page, '.page-header')).toContain('Needs review');
-    expect(text(page, '.page-header')).toContain('Approval 1 of 2');
-
-    // Inline edit + checkbox in the action items editor → autosave → saved on the server.
-    await waitFor(() => !!page.doc.querySelector('[aria-label="Owner of action item 1"]'), 'the minutes editor');
-    type(page, '[aria-label="Owner of action item 1"]', 'Priya');
-    const done = page.doc.querySelector('[aria-label="Done: action item 1"]') as HTMLInputElement;
-    done.checked = true;
-    done.dispatchEvent(new page.dom.window.Event('change', { bubbles: true }));
-    await waitFor(() => text(page, '#saveState') === 'Saved', 'autosave');
+    // Guided steps: Meeting first; approval and email can't be opened yet (no skipping review).
+    expect(page.doc.getElementById('wfStep-meeting')!.getAttribute('aria-current')).toBe('step');
+    expect((page.doc.getElementById('wfStep-approval') as HTMLButtonElement).disabled).toBe(true);
+    expect((page.doc.getElementById('wfStep-email') as HTMLButtonElement).disabled).toBe(true);
+    const next = async (step: string) => {
+      (page.doc.getElementById('wfNext') as HTMLButtonElement).click();
+      await waitFor(() => page.doc.getElementById(`wfStep-${step}`)?.getAttribute('aria-current') === 'step', `the ${step} step`);
+    };
+    await next('transcript');
+    await next('summary');
+    // The review has no action-items step any more: Summary leads straight to Approval.
+    expect(page.doc.getElementById('wfStep-decisions')).toBeNull();
+    expect(page.doc.getElementById('addActionItem')).toBeNull();
     const runId = new URL(page.dom.window.location.href).searchParams.get('run')!;
-    const saved = (await request(app).get(`/api/meetings/${encodeURIComponent(runId)}`)).body;
-    expect(saved.minutes.actionItems[0]).toMatchObject({ owner: 'Priya', status: 'done' });
-    (page.doc.querySelector('.time-link') as HTMLButtonElement).click();
-    expect(page.doc.querySelectorAll('.transcript-line.is-highlighted')).toHaveLength(1);
+    await next('approval');
 
-    // Approval 1 — double click sends one request, then the send confirmation.
-    doubleClick(primary(page));
-    await waitFor(() => title(page) === 'Review and send', 'the send confirmation');
+    // Approval: Next waits for the explicit approval. Double click sends one request, then the email.
+    expect((page.doc.getElementById('wfNext') as HTMLButtonElement).disabled).toBe(true);
+    doubleClick(page.doc.getElementById('approveMinutes') as HTMLButtonElement);
+    await waitFor(() => page.doc.getElementById('wfStep-email')?.getAttribute('aria-current') === 'step', 'the email step');
     expect(posts(page, '/approve-minutes')).toBe(1);
-    expect(primary(page).textContent).toBe('Approve (draft only)');
+    expect(text(page, '.page-header')).toContain('Emails drafted');
+    expect(primary(page).textContent).toBe('Approve draft');
+    expect(text(page, '.callout-info')).toContain('Sending is disabled (draft-only mode).');
     expect(page.doc.querySelectorAll('.recipient')).toHaveLength(2);
     expect(text(page, '.email-to')).toBe('Million <million@example.com>');
-    expect(text(page, '.email-subject')).toBe('Recap and action items: Project Progress');
+    expect(text(page, '.email-subject')).toBe('Meeting recap: Project Progress');
     const body = page.doc.querySelector('.email-body')!.textContent!;
     expect(body.startsWith('Hi Million,')).toBe(true);
     (page.doc.getElementById('recipient-1') as HTMLButtonElement).click();
     await waitFor(() => text(page, '.email-to') === 'Priya <priya@example.com>', 'Priya');
-    expect(page.doc.querySelector('.email-body')!.textContent).toContain('Your action items:');
+    expect(page.doc.querySelector('.email-body')!.textContent).not.toContain('Your action items:'); // action items stay on the server, not in the email
     page.doc.getElementById('recipient-1')!.dispatchEvent(new page.dom.window.KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
     await waitFor(() => text(page, '.email-to') === 'Million <million@example.com>', 'keyboard selection');
 
-    // Back to review is read-only now.
-    (page.doc.querySelector('.back-link') as HTMLButtonElement).click();
-    await waitFor(() => !!page.doc.getElementById('transcriptHeading'), 'review again');
-    // Approved minutes are read-only: every field locked, editors read-only, and the lock explained.
-    await waitFor(() => text(page, '.review-banners').includes('Minutes approved.'), 'locked banner');
-    const fields = Array.from(page.doc.querySelectorAll('.minutes-panel input[type="text"]')) as HTMLInputElement[];
-    expect(fields.length).toBeGreaterThan(0);
-    expect(fields.every((f) => f.readOnly)).toBe(true);
+    // Back to review: the approved minutes are read-only now.
+    (page.doc.getElementById('backToReview') as HTMLButtonElement).click();
+    await waitFor(() => text(page, '.wf-card').includes('Minutes reviewed.'), 'approval step, reviewed');
+    // The summary is shown (read-only) right below on the Review step.
+    await waitFor(() => text(page, '.review-banners').includes('Minutes reviewed.') && !!page.doc.getElementById('summaryHeading'), 'locked banner');
     expect(Array.from(page.doc.querySelectorAll('.minutes-panel .ql-editor')).every((e) => e.getAttribute('contenteditable') === 'false')).toBe(true);
-    expect(page.doc.getElementById('addActionItem')).toBeNull();
-    expect(primary(page).textContent).toBe('Review email');
-    primary(page).click();
-    await waitFor(() => title(page) === 'Review and send', 'send again');
+    // Still correctable, but only through the "approval again" warning (Edit Summary).
+    expect(text(page, '#editStep')).toBe('Edit Summary');
+    expect(text(page, '.wf-minutes .wf-head')).toContain('Editing it will require approval again.');
+    (page.doc.getElementById('wfStep-email') as HTMLButtonElement).click();
+    await waitFor(() => !!primary(page) && primary(page).textContent === 'Approve draft', 'email again');
 
-    // Approval 2 — one request; draft-only toast; the email stays visible below the completion summary.
+    // Approval 2 — one request; draft-only: "Draft created — sending is disabled."; the email stays visible.
     doubleClick(primary(page));
-    await waitFor(() => !!page.doc.querySelector('.final-approval'), 'the approved state');
+    await waitFor(() => !!page.doc.querySelector('.final-approval'), 'the reviewed state');
     expect(posts(page, '/approve-emails')).toBe(1);
-    expect(text(page, '#toasts')).toContain('Minutes approved — email not sent (draft-only mode)');
+    expect(text(page, '#toasts')).toContain('Minutes reviewed — email not sent (draft-only mode)');
     expect(text(page, '#toasts')).not.toMatch(/sent to \d/i);
     const facts = text(page, '.final-approval');
-    expect(facts).toMatch(/Approved bys*Million/);
-    expect(facts).toMatch(/Emails*Not sent — draft-only mode/);
+    expect(facts).toContain('Draft created — sending is disabled.');
+    expect(facts).toMatch(/Reviewed bys*Million/);
+    expect(facts).toMatch(/Emails*Not sent — sending is disabled/);
     expect(page.doc.querySelector('.email-body')!.textContent).toBe(body);
-    expect(primary(page).textContent).toBe('Back to meetings');
+    expect(text(page, '#wfDone')).toBe('Back to meetings');
 
     // Lists reflect it.
-    primary(page).click();
-    await waitFor(() => text(page, 'tbody').includes('Project Progress') && text(page, 'tbody').includes('Approved'), 'the refreshed meetings table');
-    (page.doc.querySelectorAll('.nav-link')[1] as HTMLAnchorElement).click();
-    await waitFor(() => title(page) === 'Action items' && text(page, 'tbody').includes('Priya'), 'action items');
+    (page.doc.getElementById('wfDone') as HTMLButtonElement).click();
+    await waitFor(() => text(page, 'tbody').includes('Project Progress') && text(page, 'tbody').includes('Emails drafted'), 'the refreshed meetings table');
+    // Action items aren't in the navigation any more (removed from the dashboard).
+    expect(Array.from(page.doc.querySelectorAll('.nav-link .label-text')).map((n) => n.textContent)).toEqual(['Meetings', 'People', 'Settings']);
 
     // Search (grouped dropdown): no-match state, then a match.
     type(page, '#search', 'zzz');
@@ -178,7 +181,7 @@ describe('Meeting Assistant — redesigned app', () => {
     // Refresh after a server restart reopens the approved email.
     const restarted = server(dataDir);
     const refreshed = track(openPage(restarted.app, `/?run=${encodeURIComponent(runId)}&view=send`));
-    await waitFor(() => !!refreshed.doc.querySelector('.final-approval'), 'approved meeting after refresh');
+    await waitFor(() => !!refreshed.doc.querySelector('.final-approval'), 'reviewed meeting after refresh');
     expect(refreshed.doc.querySelector('.email-body')!.textContent).toBe(body);
 
     expect(send).not.toHaveBeenCalled();
@@ -206,7 +209,7 @@ describe('Meeting Assistant — redesigned app', () => {
     await waitFor(() => title(page) === 'Upload meeting', 'edit details');
     expect(text(page, '.file-name')).toBe('standup.wav');
     primary(page).click();
-    await waitFor(() => !!page.doc.getElementById('transcriptHeading'), 'review after retry');
+    await waitFor(() => !!page.doc.querySelector('.wf-steps'), 'review after retry');
   });
 
   it('approval needs a name, and asks for it instead of submitting', async () => {
@@ -214,11 +217,16 @@ describe('Meeting Assistant — redesigned app', () => {
     const page = track(openPage(app));
     await uploadMeeting(page, wav('ui2-name'));
     primary(page).click();
-    await waitFor(() => !!page.doc.getElementById('transcriptHeading'), 'review');
+    await waitFor(() => !!page.doc.querySelector('.wf-steps'), 'review');
     (page.dom.window as unknown as { MA: { store: { setForm: (p: object) => void } } }).MA.store.setForm({ reviewer: '' });
-    primary(page).click();
-    await waitFor(() => text(page, '#toasts').includes('Add your name'), 'the name prompt');
+    await goToStep(page, 'approval');
+    expect((page.doc.getElementById('approverName') as HTMLInputElement).value).toBe('');
+    (page.doc.getElementById('approveMinutes') as HTMLButtonElement).click();
+    await waitFor(() => text(page, '#approverError').includes('Type your name'), 'the name prompt');
     expect(posts(page, '/approve-minutes')).toBe(0);
+    type(page, '#approverName', 'Million');
+    (page.doc.getElementById('approveMinutes') as HTMLButtonElement).click();
+    await waitFor(() => posts(page, '/approve-minutes') === 1, 'reviewed with the typed name');
   });
 
   it('browser recordings are encoded as WAV the server accepts', async () => {
@@ -245,9 +253,11 @@ describe('Meeting Assistant — redesigned app', () => {
     const page = track(openPage(app));
     await uploadMeeting(page, audio);
     primary(page).click();
-    await waitFor(() => !!page.doc.getElementById('transcriptHeading'), 'review');
-    primary(page).click();
-    await waitFor(() => title(page) === 'Review and send', 'send confirmation');
-    expect(text(page, '.email-subject')).toBe('Recap and action items: Project Progress');
+    await waitFor(() => !!page.doc.querySelector('.wf-steps'), 'review');
+    expect(text(page, '.page-header')).toContain('Needs review');
+    await goToStep(page, 'approval');
+    (page.doc.getElementById('approveMinutes') as HTMLButtonElement).click();
+    await waitFor(() => page.doc.getElementById('wfStep-email')?.getAttribute('aria-current') === 'step', 'email step');
+    expect(text(page, '.email-subject')).toBe('Meeting recap: Project Progress');
   });
 });

@@ -15,13 +15,13 @@ import { createDemoProviders } from '../services/meetingPipeline/demoProviders';
 import { openPage, Page, text, waitFor } from './__testutils__/pageHarness';
 
 /** Calendar sync in the page: Settings → Integrations, Sync now, synced labels, cancellations, disconnect. */
-function setup(): { app: ReturnType<typeof createApp>; apis: FakeApis; calendar: CalendarSyncService } {
+function setup(opts: { configured?: boolean } = {}): { app: ReturnType<typeof createApp>; apis: FakeApis; calendar: CalendarSyncService } {
   const apis = fakeCalendarApis();
   const schedule = createScheduleService({ store: new Map<string, ScheduledMeeting>() });
   const people = createPeopleService({ store: new Map<string, PersonRecord>() });
   const calendar = createCalendarSyncService({
     store: new Map<string, CalendarConnection>(),
-    config: { google: { clientId: 'g', clientSecret: 's' }, microsoft: { clientId: 'm', clientSecret: 's', tenant: 'common' }, baseUrl: 'http://localhost:3000' },
+    config: opts.configured === false ? { baseUrl: 'http://localhost:3000' } : { google: { clientId: 'g', clientSecret: 's' }, microsoft: { clientId: 'm', clientSecret: 's', tenant: 'common' }, baseUrl: 'http://localhost:3000' },
     encryptionKey: randomBytes(32).toString('base64'), fetchImpl: apis.fetch, schedule, people, photoDir: mkdtempSync(path.join(os.tmpdir(), 'ph-')),
   });
   const providers = Object.assign(createDemoProviders(), { mode: 'live' as const, emailMode: 'draft-only' as const });
@@ -62,9 +62,12 @@ describe('Calendar sync in the app', () => {
     (page.doc.getElementById('calSync') as HTMLButtonElement).click();
     await waitFor(() => text(page, 'h1.page-title') === 'Settings', 'settings');
     await waitFor(() => text(page, '.integrations').includes('Google Calendar'), 'integrations');
-    expect(text(page, '.integrations')).toContain('Read-only access to events. Imports the next 4 weeks.');
+    expect(text(page, '.integrations')).toContain('Automatically import upcoming meetings and participants.');
+    expect(text(page, '#connect-google')).toBe('Connect Google Calendar');
+    expect(text(page, '#connect-microsoft')).toBe('Connect Outlook');
+    expect(text(page, '#int-microsoft')).toBe('Outlook Calendar');
     expect((page.doc.getElementById('connect-google') as HTMLButtonElement).disabled).toBe(false);
-    expect(page.doc.getElementById('connect-microsoft')).not.toBeNull();
+    expect(text(page, '.integrations')).toContain('never changes or deletes your calendar events');
   });
 
   it('connected: synced meetings carry a “Google” label; Sync now picks up a cancellation; disconnect removes them', async () => {
@@ -91,7 +94,9 @@ describe('Calendar sync in the app', () => {
 
     // Settings: connection details, calendar choice, disconnect.
     nav(page, 'Settings');
-    await waitFor(() => text(page, '.integrations').includes('Connected as sara.lee@acme.com'), 'connection card');
+    await waitFor(() => text(page, '.integrations').includes('Google Calendar connected'), 'connection card');
+    expect(text(page, '.integration-account')).toBe('sara.lee@acme.com');
+    expect(page.doc.getElementById('syncNow-google')).not.toBeNull();
     expect(text(page, '.integration-cals')).toContain('Sara Lee (main)');
     const team = Array.from(page.doc.querySelectorAll('.integration-cals input')).find((i) => i.getAttribute('data-id') === 'team-cal') as HTMLInputElement;
     team.checked = true;
@@ -102,6 +107,32 @@ describe('Calendar sync in the app', () => {
     (page.doc.getElementById('disconnect-google') as HTMLButtonElement).click(); // confirm() → true in the harness
     await waitFor(() => text(page, '#toasts').includes('Google Calendar disconnected — removed 1 synced meeting'), 'disconnected');
     await waitFor(() => !!page.doc.getElementById('connect-google'), 'Connect is back');
+  });
+
+  it('not set up: plain words, no technical details, Connect buttons unavailable', async () => {
+    const { app } = setup({ configured: false });
+    const page = track(openPage(app, '/?page=settings'));
+    await waitFor(() => text(page, '.integrations').includes('Calendar integration isn’t available yet.'), 'not available note');
+    const shown = text(page, '.settings-grid');
+    expect(shown).not.toMatch(/TOKEN_ENCRYPTION_KEY|client id|client secret|CALENDAR_SYNC_SETUP|\.env/i);
+    expect((page.doc.getElementById('connect-google') as HTMLButtonElement).disabled).toBe(true);
+    expect(page.doc.getElementById('connect-microsoft')).toBeNull(); // Outlook isn't offered until it's set up
+  });
+
+  it('a failed connection offers Try again; a failed sync offers Try again', async () => {
+    const { app, apis, calendar } = setup();
+    const page = track(openPage(app, '/?page=settings&calendarProvider=google&calendarError=' + encodeURIComponent('The calendar sign-in didn’t finish. Try connecting again.')));
+    await waitFor(() => !!page.doc.getElementById('connectRetry'), 'Try again after a failed connection');
+    expect(text(page, '.integrations .callout-danger')).toContain('Connection failed.');
+    expect(new URL(page.dom.window.location.href).searchParams.get('calendarError')).toBeNull(); // not repeated on refresh
+
+    await connectGoogle(calendar);
+    apis.google.failNext = 10;
+    await calendar.sync('google').catch(() => undefined);
+    const p2 = track(openPage(app, '/?page=settings'));
+    await waitFor(() => !!p2.doc.getElementById('syncRetry-google'), 'Try again after a failed sync');
+    expect(text(p2, '.integration .callout')).toContain('Google Calendar didn’t respond.');
+    apis.google.failNext = 0;
   });
 
   it('a failed sign-in comes back with the reason', async () => {

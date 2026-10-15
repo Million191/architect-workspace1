@@ -8,6 +8,8 @@ import { UploadProgressTracker } from '../services/meetingPipeline/uploadProgres
 import { RecordingMeta } from '../services/recording/types';
 import { ScheduleService } from '../services/schedule/scheduleService';
 import { ScheduleError } from '../services/schedule/errors';
+import { dedupeAttendees, matchKnownPeople } from '../services/meetingPipeline/dedupe';
+import { MeetingAudio, MeetingAudioStore } from '../services/meetingAudio/meetingAudioStore';
 
 const DEFAULT_MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
 
@@ -37,7 +39,8 @@ export const attendeesSchema = z
     const entries = raw.split(/[,;\n]/).map((e) => e.trim()).filter((e) => e.length > 0);
     const parsed = entries.map(parseAttendee);
     parsed.filter((p): p is string => typeof p === 'string').forEach((message) => ctx.addIssue({ code: z.ZodIssueCode.custom, message }));
-    return parsed.filter((p): p is { name: string; email?: string } => typeof p !== 'string');
+    // The same person typed twice (same address in any case, or a name also given with its address) is one attendee.
+    return dedupeAttendees(parsed.filter((p): p is { name: string; email?: string } => typeof p !== 'string'));
   })
   .pipe(
     z
@@ -45,6 +48,19 @@ export const attendeesSchema = z
       .min(1, 'List at least one attendee.')
       .max(100)
   );
+
+/** Everyone already in the People list (name + address), for matching attendees typed by name. */
+export type KnownPeople = () => Array<{ name: string; email: string }>;
+
+/** The attendee fields the pipeline takes, after matching typed names to known people (one entry per person). */
+export function attendeeFields(attendees: Array<{ name: string; email?: string }>, knownPeople?: KnownPeople): { attendeeNames: string[]; attendeeEmails: Record<string, string> } {
+  let people: Array<{ name: string; email?: string }> = attendees;
+  try { if (knownPeople) people = matchKnownPeople(attendees, knownPeople()); } catch (error) {
+    // Matching is a convenience: if the People list can't be read, the attendees stay as typed.
+    console.error(JSON.stringify({ event: 'attendee_matching_failed', error_class: error instanceof Error ? error.name : 'UnknownError', outcome: 'failure' }));
+  }
+  return { attendeeNames: people.map((a) => a.name), attendeeEmails: Object.fromEntries(people.filter((a) => a.email).map((a) => [a.name, a.email as string])) };
+}
 
 const draftFieldsSchema = z.object({
   // Needed for speaker naming, for who gets an email, and (with an address) where it goes.
@@ -83,17 +99,22 @@ const titleSchema = z.object({
   editedBy: z.string().trim().max(200).optional(),
 }).strict();
 
-const approvalSchema = z.object({ approvedBy: z.string().trim().min(1, 'approvedBy is required.').max(200) });
+const approvalSchema = z.object({
+  approvedBy: z.string().trim().min(1, 'approvedBy is required.').max(200),
+  /** Final approval only: the participants ticked in the send dialog (absent = everyone). */
+  recipients: z.array(z.string().trim().min(1).max(200)).min(1, 'Choose at least one participant to send to.').max(100).optional(),
+});
 
 const STATUS_BY_ERROR_CLASS: Record<string, number> = {
   RunNotFoundError: 404,
   StageOrderError: 409,
   UnsupportedFormatError: 422,
   CorruptedAudioError: 422,
+  UniqueConstraintError: 409,
 };
 
 /** Maps a pipeline failure to a status + a message safe to show (never a provider's raw response). */
-function sendError(res: Response, error: unknown): void {
+export function sendError(res: Response, error: unknown): void {
   const errorClass = errorClassOf(error);
   if (error instanceof RecipientProblemError) {
     res.status(422).json({ error: errorClass, problems: error.problems, message: error.message });
@@ -126,6 +147,11 @@ export interface MeetingPipelineRouterDeps {
   progress?: UploadProgressTracker;
   /** Live recordings whose processing failed, listed with status "failed" so they can be retried. */
   failedRecordings?: () => RecordingMeta[];
+  /** The People list, so an attendee typed by name is matched to the person already there. */
+  knownPeople?: KnownPeople;
+  /** Uploaded audio kept for playback, and the audio of in-app recordings (by run id). */
+  meetingAudio?: MeetingAudioStore;
+  recordingAudio?: (runId: string) => MeetingAudio | undefined;
 }
 
 export function createMeetingPipelineRouter(deps: MeetingPipelineRouterDeps): Router {
@@ -166,9 +192,10 @@ export function createMeetingPipelineRouter(deps: MeetingPipelineRouterDeps): Ro
       }
       const uploadId = fields.data.uploadId;
       const scheduledId = fields.data.scheduledMeetingId;
+      let scheduledAt: string | undefined;
       if (scheduledId) {
         if (!deps.schedule) { res.status(503).json({ error: 'ScheduleUnavailable', message: 'The calendar isn’t set up on this server.' }); return; }
-        try { deps.schedule.assertCanLinkRecording(scheduledId); } catch (error) {
+        try { scheduledAt = deps.schedule.assertCanLinkRecording(scheduledId).start ?? undefined; } catch (error) {
           const e = error as ScheduleError;
           res.status(e.errorClass === 'MeetingNotFoundError' ? 404 : 409).json({ error: e.errorClass, message: e.message });
           return;
@@ -181,12 +208,16 @@ export function createMeetingPipelineRouter(deps: MeetingPipelineRouterDeps): Ro
           buffer: req.file.buffer,
           source: fields.data.source,
           location: fields.data.location,
-          attendeeNames: fields.data.attendees.map((a) => a.name),
-          attendeeEmails: Object.fromEntries(fields.data.attendees.filter((a) => a.email).map((a) => [a.name, a.email as string])),
-          meetingContext: { title: fields.data.title },
+          ...attendeeFields(fields.data.attendees, deps.knownPeople),
+          // A real scheduled start lets "same title + same start" be recognised as the same meeting.
+          meetingContext: { title: fields.data.title, scheduledAt },
           onProgress: uploadId ? (stage) => progress.stage(uploadId, stage) : undefined,
         });
         if (uploadId) progress.finish(uploadId, 'done');
+        // Keep the audio so the Summary step can play it (best effort — the meeting is drafted either way).
+        try { deps.meetingAudio?.save(run.runId, req.file.buffer, req.file.originalname); } catch (error) {
+          console.error(JSON.stringify({ event: 'meeting_audio_save_failed', error_class: error instanceof Error ? error.name : 'UnknownError', outcome: 'partial' }));
+        }
         if (scheduledId && deps.schedule) {
           try { deps.schedule.linkRecording(scheduledId, run.runId); } catch (error) {
             // The draft exists either way; say why it isn't attached rather than failing the upload.
@@ -262,6 +293,15 @@ export function createMeetingPipelineRouter(deps: MeetingPipelineRouterDeps): Ro
     }
   });
 
+  // The meeting's audio for playback on the Summary step: an in-app recording, else a kept upload.
+  router.get('/:runId/audio', (req: Request, res: Response) => {
+    const audio = deps.recordingAudio?.(req.params.runId) ?? deps.meetingAudio?.find(req.params.runId);
+    if (!audio) { res.status(404).json({ error: 'NoAudio', message: 'No audio is kept for this meeting.' }); return; }
+    res.sendFile(audio.path, { headers: { 'Content-Type': audio.mime, 'Cache-Control': 'private, no-store' } }, (err) => {
+      if (err && !res.headersSent) res.status(404).json({ error: 'NoAudio', message: 'No audio is kept for this meeting.' });
+    });
+  });
+
   router.get('/:runId', (req: Request, res: Response) => {
     try {
       res.status(200).json(deps.pipeline!.getRun(req.params.runId));
@@ -277,7 +317,10 @@ export function createMeetingPipelineRouter(deps: MeetingPipelineRouterDeps): Ro
       return;
     }
     try {
-      res.status(200).json(await deps.pipeline![action](req.params.runId, body.data.approvedBy));
+      const run = action === 'approveEmailsAndSend'
+        ? await deps.pipeline!.approveEmailsAndSend(req.params.runId, body.data.approvedBy, { recipients: body.data.recipients })
+        : await deps.pipeline!.approveMinutes(req.params.runId, body.data.approvedBy);
+      res.status(200).json(run);
     } catch (error) {
       sendError(res, error);
     }

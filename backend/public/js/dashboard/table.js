@@ -3,8 +3,8 @@
 (function () {
   var ui = MA.ui, el = ui.el, append = ui.append;
   var TABS = [
-    { id: 'needs_review', label: 'Needs review', match: function (m) { return m.status === 'needs_review'; } },
-    { id: 'approved', label: 'Approved', match: function (m) { return MA.APPROVED_STATUSES.indexOf(m.status) !== -1; } },
+    { id: 'needs_review', label: 'Needs review', match: function (m) { return MA.REVIEW_STATUSES.indexOf(m.status) !== -1; } },
+    { id: 'approved', label: 'Reviewed', match: function (m) { return MA.APPROVED_STATUSES.indexOf(m.status) !== -1; } },
     { id: 'all', label: 'All', match: function () { return true; } },
   ];
   /** The title being renamed survives background redraws (lists refreshing) while the user types. */
@@ -12,11 +12,10 @@
 
   function tabOf(id) { return TABS.filter(function (t) { return t.id === id; })[0] || TABS[2]; }
 
-  /** "2:30 PM · 45 min" — only the parts that are known. */
+  /** "2:30 PM · 45 min" in the viewer's time zone — only the parts that are known. */
   function timeLine(m) {
-    var parts = [];
-    var t = /^(\d{2}):(\d{2})$/.exec(m.time || '');
-    if (t) parts.push(new Date(2000, 0, 1, Number(t[1]), Number(t[2])).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }));
+    var parts = [], at = MA.dashboard.sel.instant(m);
+    if (at && (m.time || m.startedAt)) parts.push(at.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }));
     if (typeof m.durationMs === 'number' && m.durationMs > 0) {
       var min = Math.round(m.durationMs / 60000);
       parts.push(min < 1 ? '< 1 min' : min < 60 ? min + ' min' : Math.floor(min / 60) + ' h' + (min % 60 ? ' ' + (min % 60) + ' min' : ''));
@@ -65,7 +64,7 @@
       if (store.get().busy) return Promise.resolve();
       store.set({ busy: true, page: 'processing', upload: { id: m.recordingId, recordingId: m.recordingId, title: m.title || 'Recorded meeting', sentFraction: 1, stage: null, error: null, failedStage: null, startedAt: Date.now() } });
       return api.recordings.finish(m.recordingId, { chunkCount: m.chunkCount || 1, durationMs: m.durationMs || undefined }).then(function (res) {
-        store.set({ busy: false, run: res.run, page: 'review', upload: { id: null, sentFraction: 0, stage: null, error: null, failedStage: null, startedAt: null }, save: { state: 'idle' }, selectedRecipient: 0 });
+        store.set({ busy: false, run: res.run, page: 'review', reviewStep: 'meeting', editing: null, upload: { id: null, sentFraction: 0, stage: null, error: null, failedStage: null, startedAt: null }, save: { state: 'idle' }, selectedRecipient: 0 });
         ui.toast('Draft minutes are ready for your review');
       }).catch(function (err) {
         var cur = store.get();
@@ -75,10 +74,10 @@
   };
 
   /** Tabs with counts (ARIA tablist; ← → Home End move between them). */
-  function tabs(meetings, current, a) {
+  function tabs(counts, current, a) {
     var list = el('div', null, 'dash-tabs', { role: 'tablist', 'aria-label': 'Filter meetings' });
     var buttons = TABS.map(function (t) {
-      var on = t.id === current, n = meetings.filter(t.match).length;
+      var on = t.id === current, n = counts[t.id];
       var b = append(el('button', null, 'dash-tab', { type: 'button', role: 'tab', id: 'tab-' + t.id, 'aria-selected': String(on), 'aria-controls': 'meetingsPanel', tabindex: on ? '0' : '-1' }),
         el('span', t.label), el('span', String(n), 'dash-tab-count'));
       b.addEventListener('click', function () { a.dashSetTab(t.id); });
@@ -136,8 +135,9 @@
   function table(shown, a) {
     var tbl = el('table', null, 'table meetings-table');
     var head = el('tr');
-    [['Date', 'col-date'], ['Title', ''], ['Participants', 'col-participants'], ['Action items', 'col-items num'], ['Status', 'col-status'], [null, 'col-chevron']].forEach(function (h) {
-      head.appendChild(h[0] ? el('th', h[0], h[1] || null, { scope: 'col' }) : append(el('td', null, h[1], { 'aria-hidden': 'true' })));
+    [['Date', 'col-date'], ['Title', ''], ['Participants', 'col-participants'], ['Status', 'col-status'], [null, 'col-row-actions']].forEach(function (h) {
+      // The last column (••• More and the chevron) has a header cell too, so the header band spans the full width.
+      head.appendChild(h[0] ? el('th', h[0], h[1] || null, { scope: 'col' }) : append(el('th', null, h[1], { scope: 'col' }), el('span', 'Actions', 'sr-only')));
     });
     append(tbl, append(el('thead'), head));
     var body = el('tbody');
@@ -156,12 +156,12 @@
       }
       var when = timeLine(m);
       append(tr,
-        append(el('td', null, 'col-date'), el('span', ui.longDate(m.date) || '—', 'date-main'), when ? el('span', when, 'date-sub') : null),
+        append(el('td', null, 'col-date'), el('span', ui.longDate(MA.dashboard.sel.localDay(m)) || '—', 'date-main'), when ? el('span', when, 'date-sub') : null),
         append(el('td'), titleCell(m, a)),
         append(el('td', null, 'participants col-participants'), ui.avatarStack(m.people && m.people.length ? m.people : m.participants)),
-        el('td', typeof m.actionItemCount === 'number' && m.runId ? String(m.actionItemCount) : '—', 'col-items num'),
-        append(el('td', null, 'col-status'), ui.badge(MA.statusOf(m.stage || m.status))),
-        append(el('td', null, 'subtle col-chevron', { 'aria-hidden': 'true' }), open ? MA.icon(m.status === 'failed' ? 'refresh-cw' : 'chevron-right') : null));
+        append(el('td', null, 'col-status'), ui.badge(MA.statusOf(m.status || m.stage))),
+        append(el('td', null, 'col-row-actions'), m.runId ? a.meetingMenu(m.runId, m.title, { id: 'more-' + m.runId, className: 'row-more' }) : null,
+          open ? append(el('span', null, 'subtle col-chevron', { 'aria-hidden': 'true' }), MA.icon(m.status === 'failed' ? 'refresh-cw' : 'chevron-right')) : null));
       body.appendChild(tr);
     });
     tbl.appendChild(body);
@@ -196,14 +196,16 @@
       } else titleNode = el('span', m.title || 'New meeting', 'meeting-card-title');
       var top = append(el('div', null, 'meeting-card-top'), titleNode,
         m.runId ? MA.menu.button(null, 'ghost', [
-          { label: m.status === 'needs_review' ? 'Review minutes' : 'Open meeting', icon: 'file-text', run: function () { a.openMeeting(m.runId); } },
+          { label: MA.REVIEW_STATUSES.indexOf(m.status) !== -1 ? 'Review minutes' : 'Open meeting', icon: 'file-text', run: function () { a.openMeeting(m.runId); } },
           { label: 'Rename', icon: 'pencil', run: function () { a.startRename(m.runId, m.title, 'card'); } },
           { label: 'Copy link', icon: 'send', run: function () { copyLink(m.runId); } },
+          { label: 'Edit meeting', icon: 'pencil', run: function () { a.openMeeting(m.runId, 'review', { step: 'meeting', edit: true }); } },
+          { label: 'Delete meeting', icon: 'trash', run: function () { a.deleteMeeting(m.runId, m.title); } },
         ], { icon: 'more-horizontal', id: 'rename-' + m.runId + '-menu', ariaLabel: 'More actions for ' + (m.title || 'this meeting'), className: 'btn-icon-touch meeting-card-menu' }) : null);
       var when = timeLine(m);
-      var meta = append(el('div', null, 'meeting-card-meta'), el('span', (ui.longDate(m.date) || 'Date not set') + (when ? ' · ' + when : ''), 'muted'), ui.badge(MA.statusOf(m.stage || m.status)));
+      var meta = append(el('div', null, 'meeting-card-meta'), el('span', (ui.longDate(MA.dashboard.sel.localDay(m)) || 'Date not set') + (when ? ' · ' + when : ''), 'muted'), ui.badge(MA.statusOf(m.status || m.stage)));
       var foot = append(el('div', null, 'meeting-card-foot'), ui.avatarStack(m.people && m.people.length ? m.people : m.participants),
-        m.runId && m.actionItemCount ? el('span', m.actionItemCount + ' action item' + (m.actionItemCount === 1 ? '' : 's'), 'muted') : null, platformBadge(m.platform));
+        platformBadge(m.platform));
       append(li, top, meta, foot);
       if (open) li.addEventListener('click', function (e) { if (!e.target.closest('button, a, input')) open(); });
       list.appendChild(li);
@@ -217,20 +219,23 @@
     return (m.title || '').toLowerCase().indexOf(q) !== -1 || who.toLowerCase().indexOf(q) !== -1;
   }
 
+  /** The filters the card, tab badges and rows share (period chip + search). */
+  function filterOpts(s) { return { range: s.dash.range, rangeFilter: s.dash.rangeFilter, query: s.query.trim().toLowerCase(), matchesQuery: matchesQuery }; }
+
   /** The "Meetings" card section: heading, tabs, active filter chips, then the table/cards or an empty state. */
   MA.dashboard.renderTable = function (root, ctx, meetings) {
     var s = ctx.state, a = ctx.actions, d = s.dash;
     var card = el('section', null, 'card', { 'aria-labelledby': 'meetingsHeading' });
     card.appendChild(append(el('div', null, 'card-head dash-head'),
-      append(el('h2', null, 'section-title', { id: 'meetingsHeading' }), 'Meetings', el('span', String(s.meetings.length), 'count')),
-      meetings.length ? tabs(meetings, MA.dashboard.currentTab(d, meetings), a) : null));
+      append(el('h2', null, 'section-title', { id: 'meetingsHeading' }), 'Meetings', el('span', String(meetings.length), 'count')),
+      meetings.length ? tabs(MA.dashboard.sel.tabCounts(meetings, filterOpts(s), TABS), MA.dashboard.currentTab(d, meetings), a) : null));
     root.appendChild(card);
     if (!meetings.length) {
       card.appendChild(ui.emptyState('inbox', 'No meetings yet', 'Upload a recording and Meeting Assistant will transcribe it and draft the minutes for you to review.',
         ui.button('Upload meeting', 'secondary', function () { a.go('upload'); }, { icon: 'upload' })));
       return;
     }
-    var b = MA.dashboard.bounds(d.range), q = s.query.trim().toLowerCase(), tab = tabOf(MA.dashboard.currentTab(d, meetings));
+    var q = s.query.trim().toLowerCase(), tab = tabOf(MA.dashboard.currentTab(d, meetings));
     var chips = el('div', null, 'filter-chips');
     if (d.rangeFilter && d.range !== 'all') {
       chips.appendChild(append(el('span', null, 'filter-chip'), el('span', MA.dashboard.RANGES[d.range].label),
@@ -240,9 +245,7 @@
       ui.button(null, 'ghost', function () { a.search('', { keepFocus: true }); }, { icon: 'x', size: 'sm', ariaLabel: 'Clear search' })));
     if (chips.childNodes.length) card.appendChild(chips);
 
-    var shown = meetings.filter(function (m) {
-      return tab.match(m) && matchesQuery(m, q) && (!d.rangeFilter || d.range === 'all' || !m.date || MA.dashboard.inRange(m.date, b));
-    });
+    var shown = MA.dashboard.sel.rows(meetings, Object.assign(filterOpts(s), { tab: tab }));
     var panel = el('div', null, 'dash-panel', { id: 'meetingsPanel', role: 'tabpanel', 'aria-labelledby': 'tab-' + tab.id });
     card.appendChild(panel);
     if (!shown.length) {

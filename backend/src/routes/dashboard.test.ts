@@ -57,19 +57,20 @@ describe('GET /api/meetings — dashboard fields', () => {
 
     await request(app).post(`${path(runId)}/approve-minutes`).send({ approvedBy: 'Reviewer' });
     m = (await list(app)).find((x) => x.runId === runId)!;
-    expect(m.status).toBe('emails_drafted');
+    expect(m.status).toBe('emails_drafted'); // minutes approved; the email is written and waits for "Approve & send" 
+    expect(m.stage).toBe('emails_pending_approval');
 
     await request(app).post(`${path(runId)}/approve-emails`).send({ approvedBy: 'Reviewer' });
     m = (await list(app)).find((x) => x.runId === runId)!;
     expect(m.status).toBe('sent');
   });
 
-  it('draft-only mode ends at "approved", never "sent"', async () => {
+  it('draft-only mode ends at "emails_drafted", never "sent"', async () => {
     const { app, providers } = demoApp('draft-only');
     const runId = await draft(app, 'Draft only', 'dash-draft');
     await request(app).post(`${path(runId)}/approve-minutes`).send({ approvedBy: 'Reviewer' });
     await request(app).post(`${path(runId)}/approve-emails`).send({ approvedBy: 'Reviewer' });
-    expect((await list(app)).find((x) => x.runId === runId)!.status).toBe('approved');
+    expect((await list(app)).find((x) => x.runId === runId)!.status).toBe('emails_drafted');
     expect(providers.outbox).toHaveLength(0);
   });
 
@@ -108,14 +109,14 @@ describe('PATCH /api/meetings/:runId/title', () => {
     expect((await list(app)).filter((x) => x.title === 'Renamed')).toHaveLength(1);
   });
 
-  it('renames an approved meeting too', async () => {
+  it('renames an reviewed meeting too', async () => {
     const { app } = demoApp('draft-only');
-    const runId = await draft(app, 'Approved one', 'dash-approved');
+    const runId = await draft(app, 'Reviewed one', 'dash-reviewed');
     await request(app).post(`${path(runId)}/approve-minutes`).send({ approvedBy: 'Reviewer' });
     await request(app).post(`${path(runId)}/approve-emails`).send({ approvedBy: 'Reviewer' });
-    const res = await request(app).patch(`${path(runId)}/title`).send({ title: 'Approved, renamed' });
+    const res = await request(app).patch(`${path(runId)}/title`).send({ title: 'Reviewed, renamed' });
     expect(res.status).toBe(200);
-    expect((await list(app)).find((x) => x.runId === runId)!.title).toBe('Approved, renamed');
+    expect((await list(app)).find((x) => x.runId === runId)!.title).toBe('Reviewed, renamed');
   });
 
   it('rejects empty, multi-line, markup-like, over-long and unknown-field titles (400); unknown meeting (404)', async () => {
@@ -139,8 +140,8 @@ describe('GET /api/activity', () => {
     const res = await request(app).get('/api/activity');
     expect(res.status).toBe(200);
     const texts = (res.body.items as Array<{ text: string }>).map((i) => i.text);
-    expect(texts).toContain('Minutes approved for Weekly sync');
-    expect(texts).toContain('Emails approved for Weekly sync (not sent — draft-only mode)');
+    expect(texts).toContain('Minutes reviewed for Weekly sync');
+    expect(texts).toContain('Emails reviewed for Weekly sync (not sent — draft-only mode)');
     expect(texts.some((t) => /emailed/.test(t))).toBe(false); // draft-only never claims a send
     const ats = (res.body.items as Array<{ at: string }>).map((i) => i.at);
     expect([...ats].sort().reverse()).toEqual(ats);

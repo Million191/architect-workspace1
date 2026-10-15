@@ -153,3 +153,22 @@ export function stepStates(page: Page): string[] {
     li.classList.contains('is-current') ? 'current' : li.classList.contains('is-done') ? 'done' : 'upcoming'
   );
 }
+
+/**
+ * Opens a review workflow step directly (tests only: `force` skips the "no skipping ahead" rule that
+ * real users get), optionally in Edit mode, and waits until it's on screen.
+ */
+export async function goToStep(page: Page, step: string, edit = false): Promise<void> {
+  const win = page.dom.window as unknown as { MA: { app: { actions: { goStep(s: string, o: object): Promise<void>; startEdit(s: string): void } } } };
+  await waitFor(() => !!page.doc.querySelector('.wf-steps'), 'the review workflow');
+  // The Summary step is read-only; the summary is edited on the Review step ('approval').
+  if (step === 'summary' && edit) {
+    await win.MA.app.actions.goStep('approval', { force: true });
+    await waitFor(() => !!page.doc.querySelector('#wfStep-approval[aria-current="step"]'), 'the review step');
+    win.MA.app.actions.startEdit('summary');
+    await waitFor(() => !!page.doc.getElementById('editSave'), 'the summary in edit mode');
+    return;
+  }
+  await win.MA.app.actions.goStep(step, { force: true, edit });
+  await waitFor(() => !!page.doc.querySelector(`#wfStep-${step}[aria-current="step"]`), `the ${step} step`);
+}

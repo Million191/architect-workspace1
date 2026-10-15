@@ -47,7 +47,7 @@ beforeAll(() => {
 });
 
 describe('meeting list and action items (read-only)', () => {
-  it('lists drafts and approved meetings with a status derived from the real stage', async () => {
+  it('lists drafts and reviewed meetings with a status derived from the real stage', async () => {
     const pipeline = createMeetingPipeline(draftOnly(), createPipelineStores({ dataDir: mkdtempSync(path.join(os.tmpdir(), 'list-')) }));
     expect(pipeline.listMeetings()).toEqual([]);
     const a = await pipeline.draftMinutes(input('a'));
@@ -56,7 +56,7 @@ describe('meeting list and action items (read-only)', () => {
     await pipeline.approveEmailsAndSend(b.runId, 'R');
 
     const list = pipeline.listMeetings();
-    expect(list.map((m) => [m.runId, m.status])).toEqual(expect.arrayContaining([[a.runId, 'needs_review'], [b.runId, 'approved']]));
+    expect(list.map((m) => [m.runId, m.status])).toEqual(expect.arrayContaining([[a.runId, 'needs_review'], [b.runId, 'emails_drafted']]));
     expect(list.find((m) => m.runId === b.runId)).toMatchObject({ title: 'Meeting b', participants: ['Alice', 'Bob'], actionItemCount: 2 });
     const items = pipeline.listActionItems();
     expect(items).toHaveLength(2);
@@ -88,7 +88,8 @@ describe('reviewer edits (autosave)', () => {
     expect(stores.minutesGate.get(run.runId)?.revisions).toHaveLength(1);
 
     const withEmails = await pipeline.approveMinutes(run.runId, 'Reviewer');
-    expect(withEmails.emails?.emails.find((e) => e.participantName === 'Alice')?.body).toContain('Send the plan to stakeholders (due 2026-10-31)');
+    // The edited item reaches Alice's email record (kept for the tracker), not the email text.
+    expect(withEmails.emails?.emails.find((e) => e.participantName === 'Alice')?.actionItems).toEqual(expect.arrayContaining([expect.objectContaining({ task: 'Send the plan to stakeholders', dueDate: '2026-10-31' })]));
   });
 
   it('refuses edits after approval and edits made to a different shape of minutes', async () => {
@@ -96,7 +97,7 @@ describe('reviewer edits (autosave)', () => {
     const run = await pipeline.draftMinutes(input('edit-locked'));
     expect(() => pipeline.reviseMinutes(run.runId, editsFrom(run, (e) => e.actionItems.pop()))).toThrow(StageOrderError);
     await pipeline.approveMinutes(run.runId, 'R');
-    expect(() => pipeline.reviseMinutes(run.runId, editsFrom(run, () => undefined))).toThrow(/already approved/);
+    expect(() => pipeline.reviseMinutes(run.runId, editsFrom(run, () => undefined))).toThrow(/already reviewed/);
   });
 });
 

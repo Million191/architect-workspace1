@@ -122,7 +122,8 @@ describe('notetaker in the page', () => {
     const off = setup({ configured: false });
     page = openPage(off.app, '/?page=settings');
     const p2 = page;
-    await waitFor(() => text(p2, '.settings-grid').includes('RECALL_API_KEY'), 'not configured note');
+    await waitFor(() => text(p2, '.settings-grid').includes('The meeting notetaker isn’t available yet.'), 'not configured note');
+    expect(text(p2, '.settings-grid')).not.toMatch(/RECALL_|NOTETAKER_SETUP|environment/);
     expect(q(p2, '#notetakerAuto')).toBeNull();
   });
 });

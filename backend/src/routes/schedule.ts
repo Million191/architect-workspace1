@@ -1,3 +1,4 @@
+import { UniqueConstraintError } from '../services/storage/uniqueIndex';
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { ScheduleService } from '../services/schedule/scheduleService';
@@ -29,7 +30,7 @@ const timeZone = z.string().max(64).refine((tz) => { try { new Intl.DateTimeForm
 
 const STATUS: Record<string, number> = { MeetingNotFoundError: 404, InvalidTransitionError: 409, StaleVersionError: 409, ScheduleValidationError: 400 };
 
-export type DisplayStatus = 'upcoming' | 'postponed' | 'cancelled' | 'needs_review' | 'emails_drafted' | 'approved' | 'sent';
+export type DisplayStatus = 'upcoming' | 'postponed' | 'cancelled' | 'needs_review' | 'in_progress' | 'approved' | 'emails_drafted' | 'sent';
 
 export interface ScheduleRouterDeps {
   schedule?: ScheduleService;
@@ -42,6 +43,10 @@ export interface ScheduleRouterDeps {
 function fail(res: Response, error: unknown): void {
   if (error instanceof ScheduleError) {
     res.status(STATUS[error.errorClass] ?? 400).json({ error: error.errorClass, message: error.message });
+    return;
+  }
+  if (error instanceof UniqueConstraintError) {
+    res.status(409).json({ error: error.errorClass, message: 'There’s already a meeting with this title at this time.' });
     return;
   }
   res.status(500).json({ error: 'UnknownError', message: 'Something went wrong. Try again.' });
@@ -62,8 +67,7 @@ export function createScheduleRouter(deps: ScheduleRouterDeps): Router {
     let display: DisplayStatus = m.status === 'scheduled' ? 'upcoming' : m.status;
     if (m.runId && deps.pipeline) {
       try {
-        const stage = deps.pipeline.getRun(m.runId).stage;
-        display = stage === 'sent' ? 'sent' : stage === 'approved_not_sent' ? 'approved' : stage === 'emails_pending_approval' ? 'emails_drafted' : 'needs_review';
+        display = deps.pipeline.meetingStatus(m.runId); // same status as the meetings list
       } catch { /* recording draft no longer in memory: show the schedule status */ }
     }
     const { previous: _p, ...rest } = m;
@@ -76,10 +80,11 @@ export function createScheduleRouter(deps: ScheduleRouterDeps): Router {
     const linked = new Set<string>();
     const meetings = svc().listRange(q.from, q.to).map((m) => { if (m.runId) linked.add(m.runId); return view(m); });
     const f = Date.parse(q.from), t = Date.parse(q.to);
-    // Processed recordings with no schedule entry, shown as all-day items on their date.
+    // Processed recordings with no schedule entry. date/time are UTC, so this is the real instant;
+    // [from, to) are the page's local-time bounds, so the page and this filter agree on every boundary.
     const processed = (deps.pipeline?.listMeetings() ?? []).filter((m) => {
       if (linked.has(m.runId) || !m.date) return false;
-      const d = new Date(`${m.date}T12:00:00`).getTime();
+      const d = Date.parse(`${m.date}T${m.time ?? '12:00'}:00Z`);
       return d >= f && d < t;
     });
     res.json({ meetings, processed });
@@ -90,7 +95,7 @@ export function createScheduleRouter(deps: ScheduleRouterDeps): Router {
   router.post('/', (req, res) => {
     const b = parse(meetingBody, req.body, res);
     if (!b) return;
-    try { const r = svc().create(b, { by: b.by }); res.status(201).json({ meeting: view(r.meeting), warnings: r.warnings }); } catch (e) { fail(res, e); }
+    try { const r = svc().create(b, { by: b.by }); res.status(r.duplicate ? 200 : 201).json({ meeting: view(r.meeting), warnings: r.warnings, duplicate: r.duplicate || undefined }); } catch (e) { fail(res, e); }
   });
 
   router.put('/:id', (req, res) => {

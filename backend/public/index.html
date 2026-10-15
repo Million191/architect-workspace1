@@ -17,6 +17,7 @@
 <link rel="stylesheet" href="styles/editor.css">
 <link rel="stylesheet" href="styles/dashboard.css">
 <link rel="stylesheet" href="styles/notetaker.css">
+<link rel="stylesheet" href="styles/workflow.css">
 <link rel="stylesheet" href="styles/mobile.css">
 </head>
 <body>
@@ -33,13 +34,13 @@
     <header class="topbar">
       <span class="topbar-brand narrow-only" id="topbarBrand"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">Meeting Assistant</span></span>
       <div class="search wide-only" role="search">
-        <label class="sr-only" for="search">Search meetings, transcripts, or action items</label>
+        <label class="sr-only" for="search">Search meetings and transcripts</label>
         <span id="searchIcon"></span>
-        <input id="search" class="input" type="search" placeholder="Search meetings, transcripts, or action items" autocomplete="off">
+        <input id="search" class="input" type="search" placeholder="Search meetings and transcripts" autocomplete="off">
         <span class="kbd" aria-hidden="true" id="searchKbd">⌘K</span>
         <div id="searchPanel" class="search-panel" hidden></div>
       </div>
-      <button id="searchOpen" class="btn btn-ghost btn-icon-touch narrow-only" type="button" aria-label="Search meetings, transcripts, or action items" aria-haspopup="dialog"></button>
+      <button id="searchOpen" class="btn btn-ghost btn-icon-touch narrow-only" type="button" aria-label="Search meetings and transcripts" aria-haspopup="dialog"></button>
       <button id="recPill" class="rec-pill" type="button" hidden><span class="record-dot" aria-hidden="true"></span><span>Recording</span><span id="recPillTime" class="mono">0:00</span></button>
       <button id="botPill" class="rec-pill bot-pill" type="button" hidden title="Open the calendar"><span class="record-dot" aria-hidden="true"></span><span class="bot-pill-text">Notetaker recording</span></button>
       <div class="topbar-right">
@@ -82,6 +83,7 @@
 <script src="js/calendar/sync.js"></script>
 <script src="js/notetaker/ui.js"></script>
 <script src="js/notetaker/controller.js"></script>
+<script src="js/dashboard/selectors.js"></script>
 <script src="js/dashboard/stats.js"></script>
 <script src="js/dashboard/table.js"></script>
 <script src="js/dashboard/activity.js"></script>
@@ -94,6 +96,9 @@
 <script src="js/review/transcriptPanel.js"></script>
 <script src="js/review/versions.js"></script>
 <script src="js/review/reviewExtras.js"></script>
+<script src="js/review/workflow.js"></script>
+<script src="js/review/steps.js"></script>
+<script src="js/review/sendDialog.js"></script>
 <script src="js/screens/review.js"></script>
 <script src="js/screens/send.js"></script>
 <script src="js/screens/actionItems.js"></script>

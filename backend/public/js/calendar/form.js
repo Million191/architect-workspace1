@@ -132,7 +132,7 @@
 
     var times = append(el('div', null, 'cal-form-times'), field('calDate', 'Date', date), field('calStart', 'Start', start), field('calEnd', 'End', end));
     var participantsField = append(el('div', null, 'field'), el('label', 'Participants', 'label', { for: 'calParticipants' }), chips.node,
-      el('p', 'Press Enter or comma to add. They’ll get the approved minutes later.', 'help'));
+      el('p', 'Press Enter or comma to add. They’ll get the reviewed minutes later.', 'help'));
     chips.input.id = 'calParticipants';
     append(body, field('calTitle', 'Title', title), times, overlap, participantsField, field('calLink', 'Meeting link (optional)', link), field('calAgenda', 'Agenda or notes (optional)', agenda), formError);
 

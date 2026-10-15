@@ -1,0 +1,141 @@
+/* Meeting Assistant — guided review workflow: step bar, step head (Edit / Cancel / Save changes),
+   Back / Next footer, Meeting / Transcript / Approval steps, Email step actions. Tokens only. */
+
+/* Step bar: Meeting → Transcript → Summary → Review → Approval → Email */
+.wf-steps { margin: 0 0 var(--space-3); }
+.wf-steps ol { display: flex; gap: var(--space-1); list-style: none; margin: 0; padding: 0; }
+.wf-steps li { flex: 1 1 0; min-width: 0; display: flex; align-items: center; }
+.wf-steps li + li::before { content: ""; flex: 0 0 12px; height: 1px; margin-right: var(--space-1); background: var(--color-border-strong); }
+.wf-step { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; height: 40px; padding: 0 10px; border: var(--border-width) solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); color: var(--color-text-muted); font: inherit; font-size: var(--text-sm); font-weight: var(--weight-medium); cursor: pointer; text-align: left; transition: border-color var(--duration) var(--ease), background-color var(--duration) var(--ease); }
+.wf-step:hover:not(:disabled) { border-color: var(--color-border-strong); color: var(--color-text); }
+.wf-step:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.wf-step:disabled { cursor: not-allowed; opacity: 0.6; }
+.wf-num { flex: none; display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--color-surface-subtle); border: var(--border-width) solid var(--color-border-strong); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+.wf-check { flex: none; width: 18px; height: 18px; color: var(--color-success); }
+.wf-label, .wf-short { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wf-short { display: none; }
+.wf-step.is-current { border-color: var(--color-accent); background: var(--color-accent-subtle); color: var(--color-accent); }
+.wf-step.is-current .wf-num { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-accent-fg); }
+.wf-step.is-done { color: var(--color-text); }
+
+/* Step head: title + what to do, then Edit or Cancel / Save changes */
+.wf-card { margin-bottom: var(--space-2); }
+.wf-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); padding: var(--space-2) var(--space-3); }
+.wf-head .help { margin: 4px 0 0; }
+.wf-head.is-editing { background: var(--color-accent-subtle); border-radius: var(--radius-md) var(--radius-md) 0 0; }
+.wf-tools { display: flex; align-items: center; gap: var(--space-1); flex: none; }
+.wf-body { padding-top: 0; }
+.wf-minutes > .wf-card { margin-bottom: var(--space-2); }
+.wf-intro { margin: 0 0 var(--space-2); }
+.wf-intro .help { margin: 4px 0 0; }
+
+/* Summary / Decisions: plain text when reading; bordered text areas while editing */
+.wf-minutes .md-section .ql-editor { padding: 4px 0; }
+.wf-minutes.is-editing .md-section .ql-editor { min-height: 96px; padding: 10px 12px; border: var(--border-width) solid var(--color-border-strong); border-radius: var(--radius-sm); background: var(--color-surface); cursor: text; }
+.wf-minutes.is-editing .md-section .ql-editor:focus { outline: 2px solid var(--color-focus); outline-offset: 1px; border-color: var(--color-accent); }
+.md-section-tools { display: inline-flex; gap: var(--space-1); }
+.wf-minutes.is-editing .md-section .ql-editor[contenteditable="false"] { border-color: transparent; background: transparent; min-height: 0; padding: 4px 0; }
+.wf-minutes:not(.is-editing) .md-title[readonly] { border-color: transparent; background: transparent; padding-left: 0; }
+
+/* Meeting step */
+.wf-facts { grid-template-columns: 140px 1fr; }
+.wf-people { display: flex; flex-direction: column; gap: var(--space-1); margin: var(--space-1) 0; }
+.wf-person { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto; gap: var(--space-1); align-items: center; }
+
+/* Transcript step (Edit mode) */
+.wf-lines { list-style: none; margin: 0 0 var(--space-2); padding: var(--space-2) var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); }
+.wf-line { display: flex; flex-direction: column; gap: 4px; }
+.wf-line .textarea { width: 100%; resize: vertical; }
+
+/* Approval step */
+.wf-checklist { list-style: none; margin: 0 0 var(--space-3); padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.wf-checklist li { display: grid; grid-template-columns: 20px 140px 1fr auto; align-items: center; gap: var(--space-1); padding: 10px 12px; border: var(--border-width) solid var(--color-border); border-radius: var(--radius-sm); }
+.wf-checklist li > .icon { color: var(--color-success); }
+.wf-checklist li > .icon:first-child[class] { width: 18px; height: 18px; }
+.link-button { border: 0; background: none; padding: 0; color: var(--color-accent); font: inherit; font-weight: var(--weight-medium); cursor: pointer; }
+.link-button:hover { text-decoration: underline; }
+.link-button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; border-radius: 2px; }
+.wf-approver { max-width: 360px; }
+.wf-approve-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1); margin-top: var(--space-2); }
+.wf-spacer { flex: 1 1 auto; }
+.email-actions { padding: var(--space-2) 0; }
+.email-edit { width: 100%; font-family: var(--font-mono, ui-monospace, monospace); font-size: var(--text-sm); line-height: 1.5; margin-top: var(--space-1); }
+
+/* Email step: long names and addresses wrap instead of widening the page */
+.send-grid > * { min-width: 0; }
+.recipient { min-width: 0; }
+.recipient-meta { min-width: 0; overflow-wrap: anywhere; }
+.email-headers dd { min-width: 0; overflow-wrap: anywhere; }
+
+/* Send confirmation dialog */
+.send-confirm .help { margin: 0 0 var(--space-2); }
+.send-confirm-list { list-style: none; margin: var(--space-2) 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 320px; overflow-y: auto; }
+.send-confirm-person { display: flex; align-items: center; gap: var(--space-1); padding: 8px 10px; border: var(--border-width) solid var(--color-border); border-radius: var(--radius-sm); cursor: pointer; min-height: 44px; }
+.send-confirm-row.is-missing .send-confirm-person { cursor: not-allowed; background: var(--color-surface-subtle); }
+.send-confirm-meta { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
+.send-confirm-name { font-weight: var(--weight-medium); }
+.send-confirm-missing { color: var(--color-warning); font-size: var(--text-sm); }
+.send-confirm-error:empty { display: none; }
+.spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
+
+.email-missing { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1); }
+.recipient-form .help { margin: 0 0 var(--space-2); }
+.recipient-rows { display: flex; flex-direction: column; gap: var(--space-1); max-height: 320px; overflow-y: auto; margin-bottom: var(--space-1); }
+.recipient-row { display: grid; grid-template-columns: minmax(0, 1fr) 32px; gap: var(--space-1); align-items: center; }
+
+/* Back / Next */
+.wf-footer { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-top: var(--space-3); padding-top: var(--space-2); border-top: var(--border-width) solid var(--color-border); }
+.wf-next-wrap { display: inline-flex; align-items: center; gap: var(--space-1); }
+.wf-next-wrap .help { margin: 0; }
+
+@media (max-width: 900px) {
+  .wf-label { display: none; }
+  .wf-short { display: inline; }
+  .wf-step { justify-content: center; padding: 0 6px; }
+}
+@media (max-width: 640px) {
+  .wf-steps ol { gap: 4px; }
+  .wf-steps li + li::before { display: none; }
+  .wf-short { display: none; }
+  .wf-step { height: 44px; padding: 0; }
+  .wf-step.is-current .wf-short { display: inline; font-size: var(--text-xs); }
+  .wf-steps li:has(.is-current) { flex: 2.5 1 0; }
+  .wf-head { flex-direction: column; padding: var(--space-2); }
+  .wf-tools { width: 100%; }
+  .wf-tools .btn { flex: 1; }
+  .wf-person { grid-template-columns: 1fr auto; }
+  .wf-person input[type="email"] { grid-column: 1 / 2; }
+  .wf-checklist li { grid-template-columns: 20px 1fr auto; }
+  .wf-checklist li .muted { grid-column: 2 / 4; }
+  .wf-footer .btn { min-height: 44px; }
+  .wf-next-wrap { flex-direction: column; align-items: flex-end; }
+  .wf-approve-actions .btn { flex: 1 1 auto; min-height: 44px; }
+  .wf-facts { grid-template-columns: 1fr; }
+}
+
+/* Summary step: edit log (original AI draft + every saved version) */
+.edit-log { margin-top: var(--space-2); }
+.edit-log .section-title { display: inline-flex; align-items: center; gap: 8px; }
+.edit-log .section-title .icon { width: 18px; height: 18px; }
+.edit-log-note { margin: 0; padding: 0 var(--space-3); }
+.edit-log-list { list-style: none; margin: 0; padding: var(--space-2) var(--space-3) var(--space-3); display: flex; flex-direction: column; gap: 8px; font-size: var(--text-sm); }
+.edit-log-item.is-original strong { color: var(--color-accent); }
+
+/* Email step, already sent: "Missed someone?" — send the same minutes to more people */
+.send-more { align-items: center; }
+.send-more-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+
+/* Summary step: the recording and the transcript, read-only */
+.audio-card { margin-bottom: var(--space-2); }
+.audio-card .section-title { display: inline-flex; align-items: center; gap: 8px; }
+.audio-card .section-title .icon { width: 18px; height: 18px; }
+.audio-body { padding: var(--space-2) var(--space-3) var(--space-3); }
+.meeting-audio { width: 100%; }
+.wf-minutes + .transcript-panel { margin-top: var(--space-2); }
+
+/* Add recipients: People suggestions under each name/email box */
+.recipient-field { position: relative; flex: 1; min-width: 0; }
+.recipient-field .input { width: 100%; }
+.recipient-field .suggest-list { position: static; margin-top: 4px; max-height: 220px; }

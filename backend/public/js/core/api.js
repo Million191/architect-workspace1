@@ -13,10 +13,28 @@
     return error;
   }
 
-  async function call(url, options) {
+  /**
+   * Writes in flight, by method + url + body. The same write sent again before the first answers
+   * (a double-click, a double Enter) shares the first request instead of sending a second one.
+   */
+  var inFlight = {};
+  function call(url, options) {
+    var method = (options && options.method) || 'GET';
+    if (method === 'GET') return send(url, options);
+    var key = method + ' ' + url + ' ' + (typeof (options && options.body) === 'string' ? options.body : '');
+    if (inFlight[key]) return inFlight[key];
+    var pending = send(url, options);
+    inFlight[key] = pending;
+    var clear = function () { if (inFlight[key] === pending) delete inFlight[key]; };
+    pending.then(clear, clear);
+    return pending;
+  }
+  async function send(url, options) {
     var res;
     try { res = await fetch(url, options); } catch (e) { throw apiError({}, 0); }
     var body = res.status === 204 ? {} : await res.json().catch(function () { return {}; });
+    // Signed out (or the session expired): go to the sign-in page, then come back here.
+    if (res.status === 401 && body.error === 'AuthRequired') { window.location.assign('/login?next=' + encodeURIComponent(location.pathname + location.search)); }
     if (!res.ok) throw apiError(body, res.status);
     return body;
   }
@@ -58,7 +76,17 @@
     draft: draft,
     saveMinutes: function (id, edits) { return post(meeting(id) + '/minutes', edits); },
     approveMinutes: function (id, by) { return post(meeting(id) + '/approve-minutes', { approvedBy: by }); },
-    approveEmails: function (id, by) { return post(meeting(id) + '/approve-emails', { approvedBy: by }); },
+    /** recipients: the participant names ticked in the send dialog (omit for everyone / draft-only). */
+    approveEmails: function (id, by, recipients) { return post(meeting(id) + '/approve-emails', recipients ? { approvedBy: by, recipients: recipients } : { approvedBy: by }); },
+    /** Human-in-the-loop: request changes, edit the email or participants before approval, delete. */
+    requestChanges: function (id, note, by) { return post(meeting(id) + '/request-changes', { note: note, requestedBy: by }); },
+    saveEmails: function (id, emails, by) { return call(meeting(id) + '/emails', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ emails: emails, editedBy: by }) }); },
+    saveParticipants: function (id, participants, by) { return call(meeting(id) + '/participants', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ participants: participants, editedBy: by }) }); },
+    deleteMeeting: function (id) { return call(meeting(id), { method: 'DELETE' }); },
+    /** Email step: add someone to receive the minutes, or give a participant an address. */
+    addRecipient: function (id, name, email, by) { return post(meeting(id) + '/recipients', { name: name, email: email, editedBy: by }); },
+    /** Several people at once: [{ name, email }]. */
+    addRecipients: function (id, people, by) { return post(meeting(id) + '/recipients', { people: people, editedBy: by }); },
     /** Search across meetings, transcripts, and action items (typo-tolerant). */
     search: function (q, opts) {
       opts = opts || {};
@@ -77,6 +105,8 @@
       assist: function (runId, body) { return post('/api/minutes/' + encodeURIComponent(runId) + '/assist', body); },
       correctTranscript: function (runId, body) { return call('/api/minutes/' + encodeURIComponent(runId) + '/transcript', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); },
       presence: function (runId, body) { return post('/api/minutes/' + encodeURIComponent(runId) + '/presence', body); },
+      /** Editing approved minutes: withdraws the approval (Needs review again). */
+      reopen: function (runId, by) { return post('/api/minutes/' + encodeURIComponent(runId) + '/reopen', { editedBy: by }); },
       sendUpdate: function (runId, by) { return post('/api/minutes/' + encodeURIComponent(runId) + '/updates/send', { sentBy: by }); },
     },
     /** Calendar sync (Google / Outlook). Connecting is a browser navigation to /api/calendar/oauth/<provider>/start. */
@@ -114,6 +144,8 @@
     people: {
       list: function () { return call('/api/people').then(function (b) { return b.people; }); },
       update: function (id, edit) { return call('/api/people/' + encodeURIComponent(id), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(edit) }); },
+      /** "+ Add person": { name, email, avatarUrl? }. */
+      add: function (person) { return post('/api/people', person); },
     },
     /** Calendar (scheduled meetings). */
     schedule: {

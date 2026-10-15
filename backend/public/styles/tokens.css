@@ -52,10 +52,10 @@
   --content-max: 1120px;
 
   /* Light palette — neutral grays + one accent */
-  --color-bg: #fbfbfc;
+  --color-bg: #f3f4f6;
   --color-surface: #ffffff;
-  --color-surface-subtle: #f6f7f9;
-  --color-surface-hover: #f1f2f5;
+  --color-surface-subtle: #eceef1;
+  --color-surface-hover: #e7e9ed;
   --color-border: #e6e8ec;
   --color-border-strong: #d4d7de;
   --color-text: #16181d;
@@ -74,6 +74,9 @@
   --color-success-subtle: #e8f6ee;
   --color-warning: #a15c07;
   --color-warning-subtle: #fdf3e2;
+  /* In Progress (yellow), distinct from Needs review (amber). 5.0:1 on its background. */
+  --color-progress: #806200;
+  --color-progress-subtle: #fbf6d9;
   --color-danger: #c4320a;
   --color-danger-subtle: #fdeee9;
   --color-neutral: #5b616e;
@@ -83,6 +86,19 @@
   --shadow-md: 0 4px 16px rgba(16, 18, 24, 0.08), 0 1px 3px rgba(16, 18, 24, 0.06);
   --shadow-lg: 0 16px 48px rgba(16, 18, 24, 0.18);
   color-scheme: light;
+}
+
+/* "Light" chosen in Settings: a bright, crisp version — pure white page and sidebar, stronger borders and text —
+   so it looks different from "System" (which, on a light computer, keeps the soft grey look above). */
+:root[data-theme="light"] {
+  --color-bg: #ffffff;
+  --color-surface-subtle: #ffffff;
+  --color-surface-hover: #f2f3f6;
+  --color-border: #d9dde3;
+  --color-border-strong: #c3c8d1;
+  --color-text: #0e1014;
+  --color-text-muted: #4a505c;
+  --shadow-sm: 0 1px 2px rgba(16, 18, 24, 0.08);
 }
 
 /* Dark palette — same roles, tuned for contrast on dark surfaces. */
@@ -106,6 +122,8 @@
   --color-success-subtle: #12291f;
   --color-warning: #f0b450;
   --color-warning-subtle: #2e2412;
+  --color-progress: #e3c64b;
+  --color-progress-subtle: #29260f;
   --color-danger: #ff7b5c;
   --color-danger-subtle: #321912;
   --color-neutral: #a3a8b3;
@@ -137,6 +155,10 @@
     --color-success-subtle: #12291f;
     --color-warning: #f0b450;
     --color-warning-subtle: #2e2412;
+    --color-progress: #e3c64b;
+    --color-progress-subtle: #29260f;
+  --color-progress: #e3c64b;
+  --color-progress-subtle: #29260f;
     --color-danger: #ff7b5c;
     --color-danger-subtle: #321912;
     --color-neutral: #a3a8b3;

@@ -15,7 +15,7 @@ import { MeetingPipelineProviders, MeetingPipelineStores } from './types';
 export function replaceDraft(stores: MeetingPipelineStores, runId: string, draft: DraftMinutes, editedBy?: string): void {
   const session = stores.minutesGate.get(runId);
   if (!session) throw new RunNotFoundError(`No meeting draft found for id "${runId}"`, { runId });
-  if (session.status !== 'pending_review') throw new StageOrderError('These minutes are already approved. Use “Edit approved minutes” to change them.', { runId });
+  if (session.status !== 'pending_review') throw new StageOrderError('These minutes are already reviewed. Use “Edit reviewed minutes” to change them.', { runId });
   if (JSON.stringify(draft) === JSON.stringify(session.draft)) return;
   requestRevision({ sessionId: runId, changesRequested: 'Reviewer edited the draft minutes', revisedDraft: draft, requestedBy: editedBy }, { sessionStore: stores.minutesGate });
 }
@@ -23,7 +23,7 @@ export function replaceDraft(stores: MeetingPipelineStores, runId: string, draft
 /** After the final approval: the saved meeting record gets the amended minutes. */
 export function amendApprovedMinutes(stores: MeetingPipelineStores, runId: string, draft: DraftMinutes): void {
   const record = stores.finalApprovals.get(runId);
-  if (!record?.minutes) throw new StageOrderError('Only minutes that have been approved and sent can be amended.', { runId });
+  if (!record?.minutes) throw new StageOrderError('Only minutes that have been reviewed and sent can be amended.', { runId });
   stores.finalApprovals.set(runId, { ...record, minutes: draft });
   const session = stores.minutesGate.get(runId);
   if (session) stores.minutesGate.set(runId, { ...session, draft });
@@ -36,6 +36,11 @@ export function correctTranscript(stores: MeetingPipelineStores, runId: string, 
   if (!record?.transcript && !mapping) throw new RunNotFoundError(`No transcript found for id "${runId}"`, { runId });
   if (mapping) stores.speakers.set(runId, { ...mapping, segments });
   if (record?.transcript) stores.finalApprovals.set(runId, { ...record, transcript: segments });
+  // A correction before approval is review work: recorded on Gate #1 so the meeting shows "In progress".
+  const session = stores.minutesGate.get(runId);
+  if (session?.status === 'pending_review') {
+    requestRevision({ sessionId: runId, changesRequested: 'Reviewer corrected the transcript', revisedDraft: session.draft }, { sessionStore: stores.minutesGate });
+  }
 }
 
 function updatedBody(draft: DraftMinutes, participant: string, reason: string, by: string): string {
@@ -48,12 +53,6 @@ function updatedBody(draft: DraftMinutes, participant: string, reason: string, b
     '',
     'Discussion topics:',
     draft.discussionTopics.length ? draft.discussionTopics.map((t) => `- ${t.topic}: ${t.summary}`).join('\n') : '(none recorded)',
-    '',
-    'Decisions:',
-    draft.decisions.length ? draft.decisions.map((d) => `- ${d.decision}`).join('\n') : '(none recorded)',
-    '',
-    'Your action items:',
-    own.length ? own.map((a) => `- ${a.task}${a.dueDate ? ` (due ${a.dueDate})` : ''}${a.priority ? ` [${a.priority} priority]` : ''}`).join('\n') : 'No action items assigned to you from this meeting.',
   ].join('\n');
 }
 
@@ -72,7 +71,7 @@ export async function sendUpdatedMinutes(
   stores: MeetingPipelineStores, providers: MeetingPipelineProviders, runId: string, version: number, reason: string, by: string
 ): Promise<UpdatedMinutesResult> {
   const record = stores.finalApprovals.get(runId);
-  if (!record?.minutes) throw new StageOrderError('Only approved minutes can be sent as an update.', { runId });
+  if (!record?.minutes) throw new StageOrderError('Only reviewed minutes can be sent as an update.', { runId });
   const draft = record.minutes;
   const addresses = record.recipients ?? stores.recipients.get(runId) ?? {};
   const emailMode = providers.emailMode ?? 'send';

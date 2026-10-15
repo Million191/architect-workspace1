@@ -1,3 +1,5 @@
+import { withConstraints } from '../storage/uniqueIndex';
+import { scheduleConstraints } from '../storage/constraints';
 import { randomUUID } from 'crypto';
 import { InvalidTransitionError, MeetingNotFoundError, ScheduleValidationError, StaleVersionError } from './errors';
 import { ChangeContext, ExternalRef, HistoryEntry, MeetingInput, ScheduledMeeting, TimeRange } from './types';
@@ -14,6 +16,8 @@ export interface ScheduleServiceOptions {
 export interface ScheduleResult {
   meeting: ScheduledMeeting;
   warnings: string[];
+  /** True when an identical meeting (same title and start) already existed and was returned instead. */
+  duplicate?: boolean;
 }
 
 function validateTimes(start: string, end: string): void {
@@ -44,6 +48,7 @@ const sameRange = (a: TimeRange, b: TimeRange) => a.start === b.start && a.end =
  * Meetings with a recording attached (`runId`) are locked — their status belongs to the minutes workflow.
  */
 export function createScheduleService({ store, now = () => new Date() }: ScheduleServiceOptions) {
+  withConstraints(store, scheduleConstraints); // one entry per calendar event; one app-created entry per title + start
   function get(id: string): ScheduledMeeting {
     const m = store.get(id);
     if (!m) throw new MeetingNotFoundError('That meeting no longer exists.', { id });
@@ -99,6 +104,10 @@ export function createScheduleService({ store, now = () => new Date() }: Schedul
 
     create(input: MeetingInput, ctx: ChangeContext = {}): ScheduleResult {
       const v = validateInput(input);
+      // Same title at the same start (e.g. "Create" clicked twice): that meeting already exists.
+      const key = `${v.title.replace(/\s+/g, ' ').trim().toLowerCase()}@${v.start}`;
+      const same = v.start ? [...store.values()].find((m) => !m.external && m.status !== 'cancelled' && m.start && `${m.title.replace(/\s+/g, ' ').trim().toLowerCase()}@${m.start}` === key) : undefined;
+      if (same) return { meeting: same, warnings: [], duplicate: true };
       const at = now().toISOString();
       const meeting: ScheduledMeeting = {
         id: randomUUID(), title: v.title, start: v.start, end: v.end, participants: v.participants, link: v.link, agenda: v.agenda,
@@ -210,7 +219,7 @@ export function createScheduleService({ store, now = () => new Date() }: Schedul
         const at = now().toISOString();
         const id = randomUUID();
         store.set(id, {
-          id, title: v.title, start: v.start, end: v.end, participants: v.participants, link: v.link, agenda: v.agenda, external: ref,
+          id, title: v.title, start: v.start, end: v.end, participants: v.participants, link: v.link, agenda: v.agenda, external: ref, ...(input.organizer ? { organizer: input.organizer } : {}),
           status: 'scheduled', createdAt: at, updatedAt: at, version: 1, history: [{ at, by, action: 'synced', to: { start: v.start, end: v.end } }],
         });
         return 'added';
@@ -224,9 +233,10 @@ export function createScheduleService({ store, now = () => new Date() }: Schedul
       }
       const v = validateInput(input);
       const moved = !sameRange(range(existing), { start: v.start, end: v.end });
-      const changed = moved || v.title !== existing.title || JSON.stringify(v.participants) !== JSON.stringify(existing.participants) || v.link !== existing.link || v.agenda !== existing.agenda || existing.status !== 'scheduled';
+      const changed = moved || v.title !== existing.title || JSON.stringify(v.participants) !== JSON.stringify(existing.participants) || v.link !== existing.link || v.agenda !== existing.agenda || existing.status !== 'scheduled'
+        || JSON.stringify(input.organizer ?? null) !== JSON.stringify(existing.organizer ?? null);
       if (!changed) return 'unchanged';
-      commit(existing, { ...base, external: ref, status: 'scheduled', statusReason: undefined, title: v.title, start: v.start, end: v.end, participants: v.participants, link: v.link, agenda: v.agenda },
+      commit(existing, { ...base, external: ref, status: 'scheduled', statusReason: undefined, title: v.title, start: v.start, end: v.end, participants: v.participants, link: v.link, agenda: v.agenda, organizer: input.organizer },
         { by, action: existing.status === 'cancelled' ? 'restored' : moved ? 'rescheduled' : 'updated', ...(moved ? { from: range(existing), to: { start: v.start, end: v.end } } : {}) });
       return 'updated';
     },
@@ -246,6 +256,34 @@ export function createScheduleService({ store, now = () => new Date() }: Schedul
         removed++;
       }
       return removed;
+    },
+
+    /**
+     * The recording's meeting was deleted: the calendar entry stays, unlocked again, with a history
+     * line. Idempotent (no entry linked to that run → nothing happens).
+     */
+    unlinkRun(runId: string): void {
+      for (const m of [...store.values()]) {
+        if (m.runId !== runId) continue;
+        const { runId: _r, ...rest } = m;
+        store.set(m.id, { ...rest, version: m.version + 1, updatedAt: now().toISOString(), history: [...m.history, { at: now().toISOString(), action: 'updated', note: 'Recording deleted' }] });
+      }
+    },
+
+    /**
+     * A person's corrected address (People page), in calendar entries created in the app. Synced
+     * entries change only in their own calendar. Idempotent; returns how many entries changed.
+     */
+    renameParticipantEmail(from: string, to: string): number {
+      const f = from.trim().toLowerCase(), t = to.trim().toLowerCase();
+      let changed = 0;
+      for (const m of [...store.values()]) {
+        if (m.external || !m.participants.some((p) => p.email === f)) continue;
+        const participants = m.participants.map((p) => (p.email === f ? { ...p, email: t } : p));
+        store.set(m.id, { ...m, participants, version: m.version + 1, updatedAt: now().toISOString(), history: [...m.history, { at: now().toISOString(), action: 'updated', note: `Address corrected: ${f} → ${t}` }] });
+        changed++;
+      }
+      return changed;
     },
 
     /** Appends a notification outcome to the history (no Undo snapshot change). */

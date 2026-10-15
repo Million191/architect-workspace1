@@ -63,7 +63,7 @@ describe('Meetings header actions', () => {
 
     key(page, caret, 'ArrowDown');
     expect(caret.getAttribute('aria-expanded')).toBe('true');
-    expect(menuLabels(page)).toEqual(['Upload file', 'Record in person', 'Record an online meeting']);
+    expect(menuLabels(page)).toEqual(['Upload Recording', 'Record In Person Meeting', 'Record Online Meeting']);
     const items = page.doc.querySelectorAll('[role="menuitem"]');
     expect(page.doc.activeElement).toBe(items[0]);
     key(page, items[0], 'ArrowUp');
@@ -110,7 +110,7 @@ describe('Meetings header actions', () => {
     expect(page.doc.querySelectorAll('[role="menu"]').length).toBe(0);
   });
 
-  it('help menu explains shortcuts; the avatar menu reaches your name and Settings', async () => {
+  it('help menu explains shortcuts; the avatar menu sets the reviewer name and reaches Settings', async () => {
     const page = track(openPage(server()));
     await waitFor(() => !!byId(page, 'helpButton'), 'the top bar');
     const help = byId<HTMLButtonElement>(page, 'helpButton');
@@ -126,16 +126,25 @@ describe('Meetings header actions', () => {
     expect(avatar.tagName).toBe('BUTTON');
     expect(avatar.getAttribute('aria-haspopup')).toBe('menu');
     key(page, avatar, 'ArrowDown');
-    expect(menuLabels(page)).toEqual(['Set your name', 'Settings']);
+    expect(menuLabels(page)).toEqual(['Set reviewer name', 'Settings']); // no login in this test app, so no Change password / Sign out
     byId<HTMLButtonElement>(page, 'accountProfile').click();
+    await waitFor(() => !!page.doc.getElementById('approverNameInput'), 'approver name dialog');
+    const field = byId<HTMLInputElement>(page, 'approverNameInput');
+    field.value = 'Million Abate';
+    byId<HTMLButtonElement>(page, 'approverNameSave').click();
+    await waitFor(() => (avatar.getAttribute('aria-label') ?? '').includes('Million Abate'), 'name saved to the top bar');
+    expect(avatar.textContent).toBe('MA');
+    byId<HTMLButtonElement>(page, 'avatar').click();
+    expect(menuLabels(page)).toEqual(['Million Abate', 'Settings']);
+    byId<HTMLButtonElement>(page, 'accountSettings').click();
     await waitFor(() => text(page, 'h1.page-title') === 'Settings', 'settings');
-    await waitFor(() => page.doc.activeElement === byId(page, 'settingsName'), 'name field focused');
+    expect(page.doc.getElementById('settingsName')).toBeNull(); // no name section in Settings any more
   });
 
   it('search uses the new placeholder and keeps its label', async () => {
     const page = track(openPage(server()));
     const search = byId<HTMLInputElement>(page, 'search');
-    expect(search.placeholder).toBe('Search meetings, transcripts, or action items');
-    expect(text(page, 'label[for="search"]')).toBe('Search meetings, transcripts, or action items');
+    expect(search.placeholder).toBe('Search meetings and transcripts');
+    expect(text(page, 'label[for="search"]')).toBe('Search meetings and transcripts');
   });
 });

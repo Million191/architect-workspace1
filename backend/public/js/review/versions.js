@@ -37,7 +37,7 @@
 
   function itemLine(a) { return a.task + (a.owner ? ' — ' + a.owner : '') + (a.dueDate ? ' (due ' + a.dueDate + ')' : '') + (a.priority ? ' [' + a.priority + ']' : '') + (a.dismissed ? ' (not an action item)' : ''); }
 
-  /** Current minutes vs the AI draft, section by section, then action items. */
+  /** Current minutes vs the AI draft, section by section. */
   function compare(ai, current) {
     var box = el('div', null, 'compare'), text = MA.minutes.textOf;
     box.appendChild(append(el('p', null, 'help compare-legend'), el('ins', 'Added', 'diff-add'), ' ', el('del', 'Removed', 'diff-del'), ' — compared with the AI draft.'));
@@ -56,8 +56,6 @@
       var s = aiSections[id];
       box.appendChild(append(el('section', null, 'compare-section'), append(el('h3', null, 'compare-title'), el('del', s.title + ' (section deleted)', 'diff-del')), diffNode(text(s.html), '')));
     });
-    box.appendChild(append(el('section', null, 'compare-section'), el('h3', 'Action items', 'compare-title'),
-      diffNode(ai.actionItems.map(itemLine).join('\n'), current.actionItems.map(itemLine).join('\n'))));
     return box;
   }
 
@@ -66,8 +64,6 @@
     v.content.sections.forEach(function (s) {
       box.appendChild(append(el('section', null, 'compare-section'), el('h3', s.title || 'Untitled section', 'compare-title'), el('p', MA.minutes.textOf(s.html) || '(empty)', 'version-text')));
     });
-    var items = v.content.actionItems.filter(function (a) { return !a.dismissed; });
-    box.appendChild(append(el('section', null, 'compare-section'), el('h3', 'Action items (' + items.length + ')', 'compare-title'), append.apply(null, [el('ul', null, 'version-items')].concat(items.map(function (a) { return el('li', itemLine(a)); })))));
     return box;
   }
 

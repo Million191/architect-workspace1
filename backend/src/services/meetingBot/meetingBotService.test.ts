@@ -46,8 +46,10 @@ function setup(opts: { configured?: boolean } = {}) {
   const pipeline = createMeetingPipeline(createDemoProviders(), createPipelineStores());
   const store = new Map<string, BotSession>();
   const bots = createMeetingBotService({ store, client: opts.configured === false ? undefined : fake.client, pipeline, schedule, now: () => NOW });
+  // Each fixture meeting is a different meeting: same title + same start would be one (duplicate rule).
+  let n = 0;
   const meeting = (over: Partial<{ start: string; end: string; link: string; title: string }> = {}) => schedule.create({
-    title: over.title ?? 'Launch sync', start: over.start ?? at(-5), end: over.end ?? at(55), link: over.link ?? 'https://zoom.us/j/123',
+    title: over.title ?? (n++ ? `Launch sync ${n}` : 'Launch sync'), start: over.start ?? at(-5), end: over.end ?? at(55), link: over.link ?? 'https://zoom.us/j/123',
     participants: [{ name: 'Alice', email: 'alice@x.io' }, { name: 'Bob', email: 'bob@x.io' }],
   }).meeting;
   return { fake, schedule, scheduleStore, pipeline, store, bots, meeting };

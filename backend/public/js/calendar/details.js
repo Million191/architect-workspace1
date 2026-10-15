@@ -29,6 +29,7 @@
     append(body,
       append(el('div', null, 'cal-detail-row'), ui.badge(MA.displayStatus(m.display)), m.display === 'postponed' && m.originalStart ? el('span', 'Originally ' + when({ start: m.originalStart, end: m.originalEnd }), 'muted') : null),
       row('clock', el('span', when(m))),
+      m.organizer ? row('user', el('span', 'Organizer: ' + MA.people.resolve(m.organizer).name)) : null,
       row('users', m.participants && m.participants.length ? ui.peopleList(m.participants.map(MA.people.resolve)) : el('span', 'No participants added')),
       m.link ? row('send', append(el('span'), (function () { var a = el('a', m.link, null, { href: m.link, target: '_blank', rel: 'noopener noreferrer' }); return a; })())) : null,
       m.agenda ? row('file-text', el('span', m.agenda, null, { style: 'white-space:pre-wrap' })) : null,

@@ -122,6 +122,8 @@ export interface FinalApprovalRecord {
   approvedAt: string;
   approvedBy: string;
   emailMode: EmailMode;
+  /** The participants chosen in the send dialog (absent = everyone). A replay never emails anyone else. */
+  selectedRecipients?: string[];
   /** Exactly the emails that were approved (and, in draft-only mode, would have been sent) — kept so they stay reviewable after a restart. */
   emails?: EmailDraftBatch;
   /** The recipient addresses as they were at approval time. */
@@ -145,6 +147,10 @@ export interface PipelineRunView {
   recipients?: Record<string, string>;
   sentTo?: Array<{ participantName: string; sentAt: string }>;
   trackedActionItems?: TrackedActionItem[];
+  /** The dashboard status for this meeting (same rule as the meetings list). */
+  status?: 'needs_review' | 'in_progress' | 'approved' | 'emails_drafted' | 'sent';
+  /** The latest "Request changes" note, while the minutes are unapproved and unchanged since. */
+  changeRequest?: { note: string; by?: string; at: string };
 }
 
 /** What the page shows on load: which providers are wired, and what is missing for each phase. */

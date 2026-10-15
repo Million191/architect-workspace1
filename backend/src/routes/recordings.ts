@@ -1,6 +1,7 @@
 import express, { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { attendeesSchema } from './meetingPipeline';
+import { attendeeFields, attendeesSchema, KnownPeople } from './meetingPipeline';
+import { MeetingAudioStore } from '../services/meetingAudio/meetingAudioStore';
 import { RecordingError, RecordingService, MAX_CHUNK_BYTES, DraftFromRecording } from '../services/recording/recordingService';
 import { RawAudioRetention } from '../services/recording/types';
 import { MeetingPipeline } from '../services/meetingPipeline/meetingPipelineService';
@@ -41,18 +42,25 @@ export interface RecordingsRouterDeps {
   progress: UploadProgressTracker;
   /** Where the retention setting lives (a JsonFileMap in real mode). */
   settings: Map<string, string>;
+  /** Kept audio of uploaded meetings (the retention setting applies to it too). */
+  meetingAudio?: MeetingAudioStore;
+  /** The People list, so an attendee typed by name is matched to the person already there. */
+  knownPeople?: KnownPeople;
 }
 
 export const DEFAULT_RETENTION: RawAudioRetention = '30_days';
 
 /** Runs the raw-audio retention policy now (at startup, hourly, and whenever the setting changes). */
-export function applyRetention(deps: Pick<RecordingsRouterDeps, 'recordings' | 'pipeline' | 'settings'>): string[] {
+export function applyRetention(deps: Pick<RecordingsRouterDeps, 'recordings' | 'pipeline' | 'settings' | 'meetingAudio'>): string[] {
   if (!deps.recordings) return [];
   const policy = (deps.settings.get('rawAudioRetention') as RawAudioRetention) ?? DEFAULT_RETENTION;
   const approved = (runId: string) => {
     try { const stage = deps.pipeline?.getRun(runId).stage; return stage === 'sent' || stage === 'approved_not_sent'; } catch { return false; }
   };
-  return deps.recordings.applyRetention(policy, approved);
+  // Kept uploads follow the same setting.
+  const runIds = (deps.pipeline?.listMeetings() ?? []).map((m) => m.runId);
+  const uploads = deps.meetingAudio ? deps.meetingAudio.applyRetention(policy, runIds, approved) : [];
+  return [...deps.recordings.applyRetention(policy, approved), ...uploads];
 }
 
 function fail(res: Response, error: unknown): void {
@@ -123,15 +131,14 @@ export function createRecordingsRouter(deps: RecordingsRouterDeps): Router {
     if (!deps.pipeline) { res.status(503).json({ error: 'ProvidersNotConfigured', message: 'The meeting workflow is not wired into this server instance.' }); return; }
     const pipeline = deps.pipeline;
     const draft: DraftFromRecording = async (meta, audio, filename) => {
-      if (meta.scheduledMeetingId && deps.schedule) deps.schedule.assertCanLinkRecording(meta.scheduledMeetingId);
+      const scheduledAt = meta.scheduledMeetingId && deps.schedule ? deps.schedule.assertCanLinkRecording(meta.scheduledMeetingId).start ?? undefined : undefined;
       const run = await pipeline.draftMinutes({
         originalFilename: filename,
         buffer: audio,
         source: 'room_mic',
         location: meta.mode === 'in_person' ? 'In person' : 'Online meeting (captured on this computer)',
-        attendeeNames: meta.attendees.map((a) => a.name),
-        attendeeEmails: Object.fromEntries(meta.attendees.filter((a) => a.email).map((a) => [a.name, a.email as string])),
-        meetingContext: { title: meta.title },
+        ...attendeeFields(meta.attendees, deps.knownPeople),
+        meetingContext: { title: meta.title, scheduledAt },
         onProgress: (stage) => deps.progress.stage(meta.id, stage),
       });
       if (meta.scheduledMeetingId && deps.schedule) {

@@ -50,7 +50,8 @@ describe('/api/people', () => {
       expect(r.body.message).toContain('https://');
     }
     expect((await request(a).put('/api/people/tom.ward%40acme.com').send({ name: '<b>Tom</b>' })).status).toBe(400);
-    expect((await request(a).put('/api/people/tom.ward%40acme.com').send({ email: 'x@y.z' })).status).toBe(400);
+    expect((await request(a).put('/api/people/tom.ward%40acme.com').send({ nickname: 'T' })).status).toBe(400); // unknown field (email is editable now)
+    expect((await request(a).put('/api/people/tom.ward%40acme.com').send({ email: 'not-an-email' })).status).toBe(400);
     expect((await request(a).put('/api/people/tom.ward%40acme.com').send({ name: 'x'.repeat(201) })).status).toBe(400);
     const missing = await request(a).put('/api/people/ghost%40acme.com').send({ name: 'Ghost' });
     expect(missing.status).toBe(404);

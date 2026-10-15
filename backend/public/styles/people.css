@@ -38,20 +38,47 @@ button.avatar-stack:hover { background: var(--color-surface-hover); }
 .suggest-item { cursor: pointer; min-height: 44px; padding: 6px 8px; }
 .suggest-item[aria-selected="true"], .suggest-item:hover { background: var(--color-surface-hover); }
 
-/* People screen */
+/* People screen: table of Name · Role · Email, with an Edit button per row */
 .people-filter { width: min(280px, 100%); }
-.person-rows { list-style: none; margin: 0; padding: 0; }
-.person-row { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(0, 1.6fr); gap: var(--space-3); align-items: start; padding: var(--space-2) var(--space-3); border-bottom: var(--border-width) solid var(--color-border); }
-.person-row:last-child { border-bottom: 0; }
-.person-row-who { display: flex; gap: 12px; align-items: center; min-width: 0; }
-.person-row-text { display: flex; flex-direction: column; min-width: 0; }
-.person-row-edit { display: grid; grid-template-columns: 1fr 1fr auto; gap: var(--space-1); align-items: end; }
-.person-row-edit .field + .field { margin-top: 0; }
-.person-row-edit .help-error { grid-column: 1 / -1; }
-.person-none { padding: var(--space-3); }
+.people-table { width: 100%; border-collapse: collapse; }
+.people-table th { padding: 10px var(--space-3); }
+.people-table td { padding: var(--space-2) var(--space-3); border-bottom: var(--border-width) solid var(--color-border); vertical-align: top; }
+.people-table tbody tr:last-child td { border-bottom: 0; }
+.people-table .col-name { width: 38%; }
+.people-table .col-role { width: 22%; }
+.people-table .col-actions { width: 1%; text-align: right; white-space: nowrap; }
+.people-table td.col-role, .people-table td.col-email { padding-top: calc(var(--space-2) + 6px); }
+.person-row:hover td { background: var(--color-surface-hover); }
+.person-row.is-editing td, .person-row.is-editing:hover td { background: var(--color-surface); }
+.person-row-who { display: flex; gap: 12px; align-items: flex-start; min-width: 0; }
+.person-row-text { display: flex; flex-direction: column; min-width: 0; padding-top: 6px; }
+.person-name { overflow-wrap: anywhere; }
+.person-email-link { color: var(--color-text); text-decoration: none; overflow-wrap: anywhere; }
+.person-email-link:hover { color: var(--color-accent); text-decoration: underline; }
+.person-edit { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); margin-top: var(--space-2); align-items: end; }
+.person-edit .field + .field { margin-top: 0; }
+.person-edit .person-row-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: var(--space-1); }
+.person-edit .help-error { grid-column: 1 / -1; margin: 0; }
+.person-edit .help-error:empty { display: none; }
+.person-none td { padding: var(--space-3); }
 
 @media (max-width: 720px) {
-  .person-row { grid-template-columns: 1fr; gap: var(--space-2); padding: var(--space-2); }
-  .person-row-edit { grid-template-columns: 1fr; }
-  .person-row-edit .btn { height: 44px; }
+  .people-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .people-table, .people-table tbody, .people-table tr, .people-table td { display: block; width: 100%; }
+  .people-table tr { border-bottom: var(--border-width) solid var(--color-border); padding: var(--space-2); }
+  .people-table td { border: 0; padding: 4px 0; }
+  .people-table td.col-role, .people-table td.col-email { padding-top: 4px; padding-left: 44px; }
+  .people-table td.col-role::before, .people-table td.col-email::before { content: attr(data-label) ": "; color: var(--color-text-muted); font-size: var(--text-xs); }
+  .people-table .col-name, .people-table .col-role { width: 100%; }
+  .people-table td.col-actions { text-align: left; padding-left: 44px; }
+  .people-table td.col-actions .btn { min-height: 44px; }
+  .person-edit { grid-template-columns: 1fr; }
+  .person-edit .btn { height: 44px; }
 }
+
+/* Person history: meetings and action items (People page) */
+.person-history { margin-top: var(--space-1); }
+.person-history summary { cursor: pointer; width: fit-content; }
+.person-history-list { list-style: none; margin: var(--space-1) 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: var(--text-sm); }
+.person-history-list .badge { vertical-align: middle; }
+.person-history-empty { margin: 4px 0 0; }

@@ -183,12 +183,12 @@ describe('calendar sync (Google)', () => {
     expect(byTitle(s, 'Recorded')!.external).toBeUndefined();
   });
 
-  it('refuses to connect without an encryption key or client id, saying what to set up', () => {
-    expect(() => setup({ key: undefined }).svc.beginAuth('google')).toThrow('TOKEN_ENCRYPTION_KEY is not set');
+  it('refuses to connect without an encryption key or client id (plain words for the page; details in the logs)', () => {
+    expect(() => setup({ key: undefined }).svc.beginAuth('google')).toThrow('TOKEN_ENCRYPTION_KEY is not set'); // internal; the route shows plain words
     const s = setup();
     expect(s.svc.status().providers.every((p) => p.configured)).toBe(true);
     const bare = createCalendarSyncService({ store: new Map(), config: { baseUrl: 'http://x' }, encryptionKey: KEY, fetchImpl: s.apis.fetch });
-    expect(() => bare.beginAuth('microsoft')).toThrow('Outlook isn’t set up on this server yet');
+    expect(() => bare.beginAuth('microsoft')).toThrow('Calendar integration isn’t available yet — it needs administrator setup.');
     expect(bare.status().providers.map((p) => p.configured)).toEqual([false, false]);
   });
 });

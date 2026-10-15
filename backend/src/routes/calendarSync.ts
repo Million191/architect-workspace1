@@ -1,7 +1,7 @@
 import express, { Router, Request, Response } from 'express';
 import path from 'path';
 import { z } from 'zod';
-import { CalendarSyncError, CalendarSyncService } from '../services/calendarSync/calendarSyncService';
+import { CalendarSyncError, CalendarSyncService, friendlyError, NOT_AVAILABLE_MESSAGE } from '../services/calendarSync/calendarSyncService';
 import { CalendarApiError } from '../services/calendarSync/http';
 import { TokenKeyError } from '../services/calendarSync/tokenCrypto';
 
@@ -14,9 +14,18 @@ const callbackSchema = z.object({ code: z.string().min(1).max(4000).optional(), 
 
 const STATUS: Record<string, number> = { NotConfigured: 503, NotConnected: 404, InvalidState: 400, ValidationError: 400, TokenKeyError: 503, AuthError: 401, RateLimitError: 429, UpstreamUnavailable: 502, TimeoutError: 504, ContractViolation: 502 };
 
+/** A message the user can read: known calendar errors in plain words; never a token, secret or raw provider text. */
+function plain(error: unknown, provider: 'google' | 'microsoft' = 'google'): string {
+  if (error instanceof TokenKeyError) return NOT_AVAILABLE_MESSAGE;
+  if (error instanceof CalendarSyncError) return error.message;
+  if (error instanceof CalendarApiError) return friendlyError(provider, error.errorClass).message;
+  return 'Connecting the calendar failed. Try again.';
+}
+
 function fail(res: Response, error: unknown): void {
   if (error instanceof CalendarSyncError || error instanceof CalendarApiError || error instanceof TokenKeyError) {
-    res.status(STATUS[error.errorClass] ?? 400).json({ error: error.errorClass, message: error.message });
+    console.error(JSON.stringify({ event: 'calendar_request_failed', error_class: error.errorClass, outcome: 'failure' }));
+    res.status(STATUS[error.errorClass] ?? 400).json({ error: error.errorClass, message: plain(error) });
     return;
   }
   console.error(JSON.stringify({ event: 'calendar_route_failed', error_class: error instanceof Error ? error.name : 'UnknownError', outcome: 'failure' }));
@@ -39,7 +48,8 @@ export function createCalendarSyncRouter(deps: { calendar?: CalendarSyncService 
     const p = provider.safeParse(req.params.provider);
     if (!p.success) { res.status(404).json({ error: 'UnknownProvider', message: 'Unknown calendar provider.' }); return; }
     try { res.redirect(302, svc().beginAuth(p.data)); } catch (e) {
-      res.redirect(302, `/?page=settings&calendarError=${encodeURIComponent(e instanceof Error ? e.message : 'Calendar sync isn’t set up.')}`);
+      if (e instanceof TokenKeyError) console.error(JSON.stringify({ event: 'calendar_not_configured', missing: 'TOKEN_ENCRYPTION_KEY', outcome: 'failure' }));
+      res.redirect(302, `/?page=settings&calendarProvider=${p.data}&calendarError=${encodeURIComponent(plain(e, p.data))}`);
     }
   });
 
@@ -47,7 +57,7 @@ export function createCalendarSyncRouter(deps: { calendar?: CalendarSyncService 
   router.get('/oauth/:provider/callback', async (req: Request, res: Response) => {
     const p = provider.safeParse(req.params.provider);
     const q = callbackSchema.safeParse(req.query);
-    const back = (params: string) => res.redirect(302, `/?page=settings&${params}`);
+    const back = (params: string) => res.redirect(302, `/?page=settings&${p.success ? `calendarProvider=${p.data}&` : ''}${params}`);
     if (!p.success || !q.success) { back(`calendarError=${encodeURIComponent('The sign-in response wasn’t valid. Try connecting again.')}`); return; }
     if (q.data.error || !q.data.code || !q.data.state) {
       back(`calendarError=${encodeURIComponent(q.data.error === 'access_denied' ? 'Calendar access wasn’t granted, so nothing was connected.' : 'The calendar sign-in didn’t finish. Try connecting again.')}`);
@@ -57,7 +67,8 @@ export function createCalendarSyncRouter(deps: { calendar?: CalendarSyncService 
       await svc().completeAuth(p.data, q.data.code, q.data.state);
       back(`calendarConnected=${p.data}`);
     } catch (e) {
-      back(`calendarError=${encodeURIComponent(e instanceof Error ? e.message : 'Connecting the calendar failed.')}`);
+      console.error(JSON.stringify({ event: 'calendar_connect_failed', provider: p.data, error_class: (e as { errorClass?: string }).errorClass ?? (e as Error).name, outcome: 'failure' }));
+      back(`calendarError=${encodeURIComponent(plain(e, p.data))}`);
     }
   });
 

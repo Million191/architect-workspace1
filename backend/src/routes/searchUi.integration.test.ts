@@ -58,7 +58,8 @@ describe('Search', () => {
     search(page).focus();
     typeSearch(page, 'launch');
     await waitFor(() => groupHeads(page).includes('Meetings'), 'grouped results');
-    expect(groupHeads(page)).toEqual(['Meetings', 'Transcripts', 'Action items'].filter((g) => groupHeads(page).includes(g)));
+    expect(groupHeads(page)).toEqual(['Meetings', 'Transcripts'].filter((g) => groupHeads(page).includes(g)));
+    expect(groupHeads(page)).not.toContain('Action items'); // action items aren't shown in the app
     const meetings = page.doc.querySelector('#searchPanel .search-group')!;
     expect(meetings.querySelectorAll('.search-hit:not(.search-see-all)')).toHaveLength(3);
     expect(text(page, '#searchPanel .search-group .search-see-all')).toBe('See all 4 meetings');

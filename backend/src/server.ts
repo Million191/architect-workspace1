@@ -1,3 +1,9 @@
+import { createAuthRouter, requireAuth } from './routes/auth';
+import { AuthAccount, AuthService, AuthSession, createAuthService } from './services/auth/authService';
+import { createMeetingAudioStore, MeetingAudioStore } from './services/meetingAudio/meetingAudioStore';
+import { ReviewGateSession } from './services/reviewGate/types';
+import { violations } from './services/storage/uniqueIndex';
+import { meetingConstraints, recipientConstraints, scheduleConstraints } from './services/storage/constraints';
 import path from 'path';
 import express, { Express, Request, Response, NextFunction } from 'express';
 import { createAudioIngestionRouter } from './routes/audioIngestion';
@@ -15,6 +21,7 @@ import { RawAudioRetention } from './services/recording/types';
 import { createCalendarSyncRouter, photoRoute } from './routes/calendarSync';
 import { createMinutesRouter } from './routes/minutes';
 import { createActivityRouter } from './routes/activity';
+import { createMeetingReviewRouter } from './routes/meetingReview';
 import { createNotetakerRouter, notetakerWebhook } from './routes/notetaker';
 import { createMeetingBotService, MeetingBotService } from './services/meetingBot/meetingBotService';
 import { createRecallClient, recallConfigFromEnv } from './services/meetingBot/recallClient';
@@ -24,7 +31,7 @@ import { BotSession } from './services/meetingBot/types';
 import { createMinutesDocService, MinutesDocService } from './services/minutesDoc/minutesDocService';
 import { MinutesDocument } from './services/minutesDoc/types';
 import { claudeAssistant, demoAssistant, MinutesAssistant } from './services/minutesDoc/assistant';
-import { createCalendarSyncService, CalendarSyncService } from './services/calendarSync/calendarSyncService';
+import { createCalendarSyncService, CalendarSyncService, missingSetup } from './services/calendarSync/calendarSyncService';
 import { oauthConfigFromEnv } from './services/calendarSync/providers';
 import { FetchLike } from './services/calendarSync/http';
 import { CalendarConnection } from './services/calendarSync/types';
@@ -59,6 +66,10 @@ export interface AppDeps {
   spelling?: { checker?: SpellChecker; team?: TeamDictionary };
   /** Live recordings (chunked upload). Left unset, /api/recordings answers 503. */
   recordings?: RecordingService;
+  /** Kept audio of uploaded meetings (played back on the Summary step). */
+  meetingAudio?: MeetingAudioStore;
+  /** Dashboard login. Left unset (tests, demo), nothing asks for a sign-in. */
+  auth?: AuthService;
   /** Small server-side settings (raw-audio retention). A JsonFileMap in real mode. */
   settings?: Map<string, string>;
   /** Google / Outlook calendar sync. Left unset, /api/calendar answers 503. */
@@ -95,6 +106,13 @@ export function createApp(deps: AppDeps = {}): Express {
     next(err);
   });
 
+  // Login: everything below (pages and API) needs a signed-in session when auth is configured.
+  if (deps.auth) {
+    app.use('/api/auth', createAuthRouter(deps.auth));
+    app.use(requireAuth(deps.auth));
+  }
+  app.get('/login', (_req: Request, res: Response) => { res.sendFile(path.join(__dirname, '..', 'public', 'login.html')); });
+
   app.get('/health', (_req: Request, res: Response) => {
     res.status(200).json({ status: 'ok' });
   });
@@ -102,8 +120,17 @@ export function createApp(deps: AppDeps = {}): Express {
   app.use('/api/audio', createAudioIngestionRouter());
   app.use('/api/audio', createPhysicalAudioIngestionRouter());
   const progress = new UploadProgressTracker();
-  app.use('/api/meetings', createMeetingPipelineRouter({ pipeline: deps.meetingPipeline, schedule: deps.schedule, progress, failedRecordings: deps.recordings ? () => deps.recordings!.listFailed() : undefined }));
-  app.use('/api/recordings', createRecordingsRouter({ recordings: deps.recordings, pipeline: deps.meetingPipeline, schedule: deps.schedule, progress, settings: deps.settings ?? new Map() }));
+  const minutes = deps.minutes ?? (deps.meetingPipeline ? createMinutesDocService({ store: new Map<string, MinutesDocument>(), pipeline: deps.meetingPipeline }) : undefined);
+  // Delete, request changes, edit emails / participants. A deleted meeting also leaves the minutes
+  // documents, its calendar entry (which is unlocked again) and its live recording.
+  app.use('/api/meetings', createMeetingReviewRouter({
+    pipeline: deps.meetingPipeline,
+    onDeleted: (runId) => { minutes?.remove(runId); deps.schedule?.unlinkRun(runId); deps.recordings?.forgetRun(runId); deps.meetingAudio?.remove(runId); },
+  }));
+  const knownPeople = deps.people ? () => deps.people!.list().map((p) => ({ name: p.name, email: p.email })) : undefined;
+  app.use('/api/meetings', createMeetingPipelineRouter({ pipeline: deps.meetingPipeline, schedule: deps.schedule, progress, failedRecordings: deps.recordings ? () => deps.recordings!.listFailed() : undefined, knownPeople,
+    meetingAudio: deps.meetingAudio, recordingAudio: deps.recordings ? (runId) => deps.recordings!.audioFor(runId) : undefined }));
+  app.use('/api/recordings', createRecordingsRouter({ recordings: deps.recordings, pipeline: deps.meetingPipeline, schedule: deps.schedule, progress, settings: deps.settings ?? new Map(), knownPeople, meetingAudio: deps.meetingAudio }));
   app.use('/api/notetaker', createNotetakerRouter({ bots: deps.bots, settings: deps.settings ?? new Map(), onActivity: deps.onBotActivity }));
   app.use('/api/schedule', createScheduleRouter({
     schedule: deps.schedule,
@@ -113,14 +140,18 @@ export function createApp(deps: AppDeps = {}): Express {
     noticeLog: deps.email?.noticeLog ?? new Map(),
   }));
 
-  const minutes = deps.minutes ?? (deps.meetingPipeline ? createMinutesDocService({ store: new Map<string, MinutesDocument>(), pipeline: deps.meetingPipeline }) : undefined);
   app.use('/api/activity', createActivityRouter({ pipeline: deps.meetingPipeline, minutes, recordings: deps.recordings }));
   app.use('/api/minutes', createMinutesRouter({ minutes, pipeline: deps.meetingPipeline, assistant: deps.assistant }));
   // The rich-text editor (Quill, BSD-3) served from the installed package — no bundler, no CDN.
   app.use('/vendor/quill', express.static(path.join(__dirname, '..', 'node_modules', 'quill', 'dist'), { index: false }));
   app.get('/api/people/photos/:file', photoRoute(deps.photoDir));
   app.use('/api/calendar', createCalendarSyncRouter({ calendar: deps.calendar }));
-  app.use('/api/people', createPeopleRouter({ people: deps.people, pipeline: deps.meetingPipeline, schedule: deps.schedule }));
+  app.use('/api/people', createPeopleRouter({
+    people: deps.people, pipeline: deps.meetingPipeline, schedule: deps.schedule,
+    onEmailChanged: (from, to) => { deps.meetingPipeline?.renameAddress(from, to); deps.schedule?.renameParticipantEmail(from, to); },
+    onNameChanged: (email, name) => deps.meetingPipeline?.renamePerson(email, name, 'People page').length ?? 0,
+  }));
+
 
   app.use('/api/search', createSearchRouter({ search: deps.search ?? createSearchService(), pipeline: deps.meetingPipeline, schedule: deps.schedule, people: deps.people }));
 
@@ -147,16 +178,29 @@ if (require.main === module) {
   const scheduleStore = useDemo ? new Map<string, ScheduledMeeting>() : new JsonFileMap<ScheduledMeeting>(path.join(dataDir, 'schedule.json'));
   const meetingPipeline = createMeetingPipeline(providers, stores);
   const recordings = createRecordingService({ store: new RecordingStore(useDemo ? path.join(os.tmpdir(), 'meeting-assistant-demo-recordings') : path.join(dataDir, 'recordings')) });
+  const auth = useDemo ? undefined : createAuthService({ accounts: new JsonFileMap<AuthAccount>(path.join(dataDir, 'auth.json')), sessions: new JsonFileMap<AuthSession>(path.join(dataDir, 'sessions.json')) });
+  if (auth && !auth.hasAccount()) console.log(JSON.stringify({ event: 'auth_setup_needed', message: 'Open the app on this computer to create the login.', outcome: 'partial' }));
+  const meetingAudio = createMeetingAudioStore(useDemo ? path.join(os.tmpdir(), 'meeting-assistant-demo-audio') : path.join(dataDir, 'meeting-audio'));
   const settings = useDemo ? new Map<string, string>() : new JsonFileMap<string>(path.join(dataDir, 'settings.json'));
   const schedule = createScheduleService({ store: scheduleStore });
   const people = createPeopleService({ store: useDemo ? new Map<string, PersonRecord>() : new JsonFileMap<PersonRecord>(path.join(dataDir, 'people.json')) });
   const photoDir = useDemo ? path.join(os.tmpdir(), 'meeting-assistant-demo-photos') : path.join(dataDir, 'photos');
+  const calendarMissing = missingSetup(oauthConfigFromEnv(), process.env.TOKEN_ENCRYPTION_KEY);
+  if (calendarMissing.length) console.log(JSON.stringify({ event: 'calendar_sync_setup_incomplete', missing: calendarMissing, docs: 'docs/CALENDAR_SYNC_SETUP.md', outcome: 'partial' }));
+  // Saved data that breaks a duplicate rule (from before the rules existed): rule names and counts only.
+  const broken = [
+    ...violations(scheduleStore, scheduleConstraints),
+    ...violations(stores.recipients, recipientConstraints),
+    ...violations(stores.minutesGate, meetingConstraints((v: ReviewGateSession) => v.draft)),
+  ];
+  if (broken.length) console.log(JSON.stringify({ event: 'data_duplicates_found', rules: broken.map((v) => v.constraint), count: broken.length, fix: 'npm run cleanup:duplicates', outcome: 'partial' }));
   const calendar = createCalendarSyncService({
     store: useDemo ? new Map<string, CalendarConnection>() : new JsonFileMap<CalendarConnection>(path.join(dataDir, 'calendar-connections.json')),
     config: oauthConfigFromEnv(), encryptionKey: process.env.TOKEN_ENCRYPTION_KEY, fetchImpl: fetch as unknown as FetchLike, schedule, people, photoDir,
   });
   // Notetaker: Recall.ai when RECALL_API_KEY is set, a simulated bot in demo mode, otherwise off.
   const recall = recallConfigFromEnv();
+  if (!recall && !useDemo) console.log(JSON.stringify({ event: 'notetaker_setup_incomplete', missing: ['RECALL_API_KEY'], docs: 'docs/NOTETAKER_SETUP.md', outcome: 'partial' }));
   const bots = createMeetingBotService({
     store: useDemo ? new Map<string, BotSession>() : new JsonFileMap<BotSession>(path.join(dataDir, 'bot-sessions.json')),
     client: useDemo ? createDemoBotClient() : recall ? createRecallClient(recall) : undefined,
@@ -186,6 +230,8 @@ if (require.main === module) {
     assistant: useDemo ? demoAssistant() : process.env.ANTHROPIC_API_KEY ? claudeAssistant() : undefined,
     minutes: createMinutesDocService({ store: useDemo ? new Map<string, MinutesDocument>() : new JsonFileMap<MinutesDocument>(path.join(dataDir, 'minutes-docs.json')), pipeline: meetingPipeline }),
     recordings,
+    meetingAudio,
+    auth,
     settings,
     spelling: { team: createTeamDictionary(useDemo ? new Map<string, TeamWord>() : new JsonFileMap<TeamWord>(path.join(dataDir, 'team-dictionary.json'))) },
     people,
@@ -213,7 +259,7 @@ if (require.main === module) {
   // Raw-audio retention: at startup, then hourly. Deletes audio only (never the meeting), idempotently.
   const runRetention = () => {
     try {
-      const cleaned = applyRetention({ recordings, pipeline: meetingPipeline, settings });
+      const cleaned = applyRetention({ recordings, pipeline: meetingPipeline, settings, meetingAudio });
       if (cleaned.length) console.log(JSON.stringify({ event: 'raw_audio_deleted', count: cleaned.length, outcome: 'success' }));
       const policy = (settings.get('rawAudioRetention') as RawAudioRetention | undefined) ?? DEFAULT_RETENTION;
       const approved = (runId: string) => { try { const st = meetingPipeline.getRun(runId).stage; return st === 'sent' || st === 'approved_not_sent'; } catch { return false; } };

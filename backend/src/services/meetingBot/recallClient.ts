@@ -124,10 +124,10 @@ export function createRecallClient(config: RecallConfig, opts: { fetchImpl?: Fet
         }
         const body = redact(await res.text().catch(() => ''));
         console.error(JSON.stringify({ event: 'recall_api_call', target: label, status: res.status, duration_ms, attempt, outcome: 'failure', body }));
-        if (res.status === 401 || res.status === 403) throw new BotApiError('AuthError', 'Recall.ai didn’t accept the API key. Check RECALL_API_KEY and RECALL_REGION on the server.', res.status);
+        if (res.status === 401 || res.status === 403) throw new BotApiError('AuthError', 'The notetaker service didn’t accept this server’s setup. Ask your administrator to check it.', res.status);
         if (res.status === 429) lastError = new BotApiError('RateLimitError', 'Recall.ai is rate-limiting requests. Try again in a minute.', 429);
         else if (res.status >= 500) lastError = new BotApiError('UpstreamUnavailable', 'Recall.ai isn’t responding right now. Try again soon.', res.status);
-        else if (res.status === 400) throw new BotApiError('ValidationError', `Recall.ai refused the request: ${body || 'bad request'}`, 400);
+        else if (res.status === 400) throw new BotApiError('ValidationError', 'The notetaker couldn’t join with this meeting link. Check the link and try again.', 400);
         else throw new BotApiError('ContractViolation', `Recall.ai answered ${res.status} to ${label}.`, res.status);
       } catch (error) {
         if (error instanceof BotApiError && error.errorClass !== 'RateLimitError' && error.errorClass !== 'UpstreamUnavailable') throw error;

@@ -1,5 +1,8 @@
+import { withConstraints } from '../storage/uniqueIndex';
+import { minutesDocConstraints } from '../storage/constraints';
 import { MeetingPipeline } from '../meetingPipeline/meetingPipelineService';
 import { PipelineRunView } from '../meetingPipeline/types';
+import { dedupeActionItems } from '../meetingPipeline/dedupe';
 import { contentFromDraft, draftFromContent, itemEdited, sectionEdited } from './convert';
 import { sanitizeHtml } from './html';
 import { MinutesActionItem, MinutesContent, MinutesDocument, MinutesSection, MinutesVersion, Priority, SectionKind, VersionKind } from './types';
@@ -42,6 +45,7 @@ export interface MinutesDocDeps {
 type Doc = MinutesDocument & { amending?: { version: number; reason: string; by: string } };
 
 export function createMinutesDocService(deps: MinutesDocDeps) {
+  withConstraints(deps.store, minutesDocConstraints); // no repeated action items in a meeting's minutes
   const now = () => (deps.now ?? (() => new Date()))().toISOString();
 
   function stateOf(run: PipelineRunView, doc: Doc): MinutesState {
@@ -106,25 +110,27 @@ export function createMinutesDocService(deps: MinutesDocDeps) {
         dismissed: a.dismissed === true ? true : undefined, ai: was?.ai,
       } as MinutesActionItem;
     });
-    return { sections, actionItems: items };
+    // The same task for the same owner twice in one meeting is one action item (the first is kept).
+    return { sections, actionItems: dedupeActionItems(items, { ownerOf: (a) => a.owner ?? a.ownerEmail, skip: (a) => !!a.dismissed }) };
   }
 
-  function pushVersion(doc: Doc, kind: VersionKind, content: MinutesContent, author: string, extra: Partial<MinutesVersion> = {}): void {
+  /** `newVersion` (the first save of an Edit session) never folds: the text from before that edit stays as its own version. */
+  function pushVersion(doc: Doc, kind: VersionKind, content: MinutesContent, author: string, extra: Partial<MinutesVersion> = {}, newVersion = false): void {
     const at = now(), last = doc.versions[doc.versions.length - 1];
-    const fold = kind === 'edit' && last && (last.kind === 'edit' || (last.kind === 'amendment' && doc.amending?.version === last.number)) && last.author === author && Date.parse(at) - Date.parse(last.updatedAt) < COALESCE_MS;
+    const fold = !newVersion && kind === 'edit' && last && (last.kind === 'edit' || (last.kind === 'amendment' && doc.amending?.version === last.number)) && last.author === author && Date.parse(at) - Date.parse(last.updatedAt) < COALESCE_MS;
     if (fold) doc.versions[doc.versions.length - 1] = { ...last, content, updatedAt: at };
     else doc.versions.push({ number: (last?.number ?? 0) + 1, kind, content, author, createdAt: at, updatedAt: at, language: doc.language, ...extra });
   }
 
   /** Writes new content: conflict check, lock check, version, and the pipeline draft/record kept in step. */
-  function commit(runId: string, content: MinutesContent, opts: { baseRevision: number; by: string; kind: VersionKind; extra?: Partial<MinutesVersion> }): MinutesView {
+  function commit(runId: string, content: MinutesContent, opts: { baseRevision: number; by: string; kind: VersionKind; extra?: Partial<MinutesVersion>; newVersion?: boolean }): MinutesView {
     const { doc, run } = load(runId);
     if (opts.baseRevision !== doc.revision) {
       throw new MinutesError('MinutesConflict', `${doc.updatedBy} updated this draft. Reload to see their changes.`, { revision: doc.revision, updatedBy: doc.updatedBy, updatedAt: doc.updatedAt });
     }
     const state = stateOf(run, doc);
-    if (state === 'locked') throw new MinutesError('MinutesLocked', 'The minutes are approved and the email is waiting for approval. Finish that step first.');
-    if (state === 'approved') throw new MinutesError('MinutesLocked', 'These minutes are approved. Choose “Edit approved minutes” and give a reason to change them.');
+    if (state === 'locked') throw new MinutesError('MinutesLocked', 'The minutes are reviewed and the email is waiting for approval. Finish that step first.');
+    if (state === 'approved') throw new MinutesError('MinutesLocked', 'These minutes are reviewed. Choose “Edit reviewed minutes” and give a reason to change them.');
     const next = clean(content, doc.content);
     if (JSON.stringify(next) === JSON.stringify(doc.content) && opts.kind === 'edit') return view(doc, run);
     const draft = draftFromContent(run.minutes, next);
@@ -134,20 +140,22 @@ export function createMinutesDocService(deps: MinutesDocDeps) {
     doc.revision += 1;
     doc.updatedAt = now();
     doc.updatedBy = opts.by;
-    pushVersion(doc, opts.kind, next, opts.by, opts.extra);
+    pushVersion(doc, opts.kind, next, opts.by, opts.extra, opts.newVersion);
     if (state === 'amending' && doc.amending) doc.pendingUpdateEmail = { versionNumber: doc.amending.version, reason: doc.amending.reason };
     deps.store.set(runId, doc);
     return view(doc, deps.pipeline.getRun(runId));
   }
 
   return {
+    /** The meeting was deleted: its editable minutes and version history go with it. Idempotent. */
+    remove(runId: string): void { deps.store.delete(runId); },
     get(runId: string): MinutesView {
       const { doc, run } = load(runId);
       return view(doc, run);
     },
 
-    save(runId: string, content: MinutesContent, baseRevision: number, by: string): MinutesView {
-      return commit(runId, content, { baseRevision, by, kind: 'edit' });
+    save(runId: string, content: MinutesContent, baseRevision: number, by: string, opts: { newVersion?: boolean } = {}): MinutesView {
+      return commit(runId, content, { baseRevision, by, kind: 'edit', newVersion: opts.newVersion });
     },
 
     versions(runId: string) {
@@ -172,14 +180,32 @@ export function createMinutesDocService(deps: MinutesDocDeps) {
       const { doc, run } = load(runId);
       const state = stateOf(run, doc);
       if (state === 'amending') return view(doc, run);
-      if (state !== 'approved') throw new MinutesError('MinutesLocked', state === 'draft' ? 'These minutes aren’t approved yet — just edit them.' : 'Finish approving the email first.');
+      if (state !== 'approved') throw new MinutesError('MinutesLocked', state === 'draft' ? 'These minutes aren’t reviewed yet — just edit them.' : 'Finish approving the email first.');
       const why = reason.replace(/[\r\n]+/g, ' ').trim();
-      if (why.length < 3) throw new MinutesError('MinutesValidationError', 'Say briefly why the approved minutes are being changed.');
+      if (why.length < 3) throw new MinutesError('MinutesValidationError', 'Say briefly why the reviewed minutes are being changed.');
       const at = now(), number = doc.versions[doc.versions.length - 1].number + 1;
       doc.versions.push({ number, kind: 'amendment', content: doc.content, author: by, createdAt: at, updatedAt: at, reason: why.slice(0, 500), language: doc.language });
       doc.amending = { version: number, reason: why.slice(0, 500), by };
       deps.store.set(runId, doc);
       return view(doc, run);
+    },
+
+    /**
+     * "Edit Summary" on approved minutes, at Save changes: the approval is withdrawn (the meeting goes
+     * back to Needs review and must be approved again before any email). Recorded in the version
+     * history. Idempotent: unapproved minutes are returned as they are.
+     */
+    reopen(runId: string, by: string): MinutesView {
+      const { doc } = load(runId);
+      const reopened = deps.pipeline.reopenMinutes(runId, by);
+      if (reopened) {
+        delete doc.amending;
+        delete doc.pendingUpdateEmail;
+        const at = now();
+        doc.versions.push({ number: doc.versions[doc.versions.length - 1].number + 1, kind: 'amendment', content: doc.content, author: by, createdAt: at, updatedAt: at, reason: 'Reviewed minutes reopened for editing — they need approval again', language: doc.language });
+        deps.store.set(runId, doc);
+      }
+      return view(doc, deps.pipeline.getRun(runId));
     },
 
     /** Done editing approved minutes: they are read-only again. */

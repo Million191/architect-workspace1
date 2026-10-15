@@ -21,7 +21,6 @@ const defaultLogger: EmailDraftingLogger = {
 };
 
 /** Exact wording required by this story's acceptance criterion — not a paraphrase. */
-const NO_ACTION_ITEMS_LINE = 'No action items assigned to you from this meeting.';
 
 export interface EmailDraftingOptions {
   logger?: EmailDraftingLogger;
@@ -41,18 +40,11 @@ function recordFailure(resourceId: string, event: string, error: unknown): void 
   });
 }
 
-function formatActionItemLine(item: ActionItem): string {
-  const due = item.dueDate ? ` (due ${item.dueDate})` : '';
-  const priority = item.priority ? ` [${item.priority} priority]` : '';
-  return `- ${item.task}${due}${priority}`;
-}
-
-/** Shared summary + decisions, plus only this participant's own action items — never anyone
- * else's, per the architecture doc's "Email Drafting Service" description. */
-function buildBody(draft: DraftMinutes, participantName: string, ownItems: ActionItem[]): string {
+/** The shared summary (discussion topics). Decisions and action items stay with the minutes on the server;
+ * they are not listed in the email (user request 2026-10-09). The participant's own items are still kept on
+ * the drafted email (`actionItems`) for the tracker. */
+function buildBody(draft: DraftMinutes, participantName: string): string {
   const topicLines = draft.discussionTopics.map((t) => `- ${t.topic}: ${t.summary}`);
-  const decisionLines = draft.decisions.map((d) => `- ${d.decision}`);
-  const actionSection = ownItems.length > 0 ? ownItems.map(formatActionItemLine).join('\n') : NO_ACTION_ITEMS_LINE;
 
   return [
     `Hi ${participantName},`,
@@ -61,13 +53,19 @@ function buildBody(draft: DraftMinutes, participantName: string, ownItems: Actio
     '',
     'Discussion topics:',
     topicLines.length > 0 ? topicLines.join('\n') : '(none recorded)',
-    '',
-    'Decisions:',
-    decisionLines.length > 0 ? decisionLines.join('\n') : '(none recorded)',
-    '',
-    'Your action items:',
-    actionSection,
   ].join('\n');
+}
+
+/** One participant's email from approved minutes: the shared summary (their own action items are kept on the email object, not in the text). */
+export function draftEmailFor(draft: DraftMinutes, participantName: string): DraftedEmail {
+  const needle = participantName.trim().toLowerCase();
+  const ownItems = draft.actionItems.filter((item) => (item.owner ?? '').trim().toLowerCase() === needle);
+  return {
+    participantName,
+    subject: `Meeting recap: ${draft.meetingSummary.title ?? 'Meeting'}`,
+    body: buildBody(draft, participantName),
+    actionItems: ownItems,
+  };
 }
 
 /**
@@ -117,16 +115,7 @@ export function draftEmails(
       });
     }
 
-    const emails: DraftedEmail[] = attendees.map((participantName) => {
-      const needle = participantName.trim().toLowerCase();
-      const ownItems = draft.actionItems.filter((item) => (item.owner ?? '').trim().toLowerCase() === needle);
-      return {
-        participantName,
-        subject: `Recap and action items: ${draft.meetingSummary.title ?? 'Meeting'}`,
-        body: buildBody(draft, participantName, ownItems),
-        actionItems: ownItems,
-      };
-    });
+    const emails: DraftedEmail[] = attendees.map((participantName) => draftEmailFor(draft, participantName));
 
     const unmatchedActionItems: UnmatchedActionItem[] = draft.actionItems
       .filter((item) => {
