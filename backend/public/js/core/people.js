@@ -119,8 +119,9 @@
       : el('span', null, 'avatar-stack', { role: 'img', 'aria-label': label });
     stack.title = people.map(function (p) { return p.email ? p.name + ' <' + p.email + '>' : p.name; }).join('\n');
     var visible = people.slice(0, max);
-    visible.forEach(function (p) { stack.appendChild(avatar(p, { decorative: true })); });
-    if (people.length > visible.length) stack.appendChild(el('span', null, 'person-avatar person-avatar-sm avatar-more', { 'aria-hidden': 'true', 'data-initials': '+' + (people.length - visible.length) }));
+    // Each avatar names its person on hover; "+N" lists the rest. (The stack's label is what screen readers hear.)
+    visible.forEach(function (p) { var a = avatar(p, { decorative: true }); a.title = p.email ? p.name + ' <' + p.email + '>' : p.name; stack.appendChild(a); });
+    if (people.length > visible.length) stack.appendChild(el('span', null, 'person-avatar person-avatar-sm avatar-more', { 'aria-hidden': 'true', 'data-initials': '+' + (people.length - visible.length), title: people.slice(max).map(function (p) { return p.name; }).join(', ') }));
     if (!people.length) stack.appendChild(el('span', '—', 'muted'));
     if (interactive) {
       stack.addEventListener('click', function (e) {

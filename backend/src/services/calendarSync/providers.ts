@@ -51,6 +51,7 @@ interface GEvent {
   id: string; status?: string; summary?: string; updated?: string; description?: string; location?: string; hangoutLink?: string;
   start?: { dateTime?: string; date?: string }; end?: { dateTime?: string; date?: string };
   attendees?: Array<{ email?: string; displayName?: string; self?: boolean; resource?: boolean; organizer?: boolean; responseStatus?: string }>;
+  organizer?: { email?: string; displayName?: string; self?: boolean };
   conferenceData?: { entryPoints?: Array<{ entryPointType?: string; uri?: string }> };
 }
 
@@ -60,6 +61,8 @@ export function mapGoogleEvent(e: GEvent, calendarId: string): ExternalEvent | n
   const video = e.conferenceData?.entryPoints?.find((p) => p.entryPointType === 'video')?.uri;
   const link = pickMeetingLink([video, e.hangoutLink], [e.location, e.description]);
   const attendees: ExternalAttendee[] = (e.attendees ?? []).filter((a) => a.email).map((a) => ({ email: a.email as string, name: a.displayName, self: a.self, resource: a.resource, organizer: a.organizer }));
+  const org = e.organizer?.email;
+  if (org && !attendees.some((a) => a.email.toLowerCase() === org.toLowerCase())) attendees.unshift({ email: org, name: e.organizer?.displayName, self: e.organizer?.self, organizer: true });
   return { id: e.id, calendarId, title: e.summary?.trim() || '(No title)', start, end, allDay: !e.start?.dateTime, cancelled: e.status === 'cancelled', attendees, link, platform: platformOf(link), description: e.description, updated: e.updated };
 }
 

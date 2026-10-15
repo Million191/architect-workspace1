@@ -62,7 +62,10 @@ export function createMeetingBotService(deps: MeetingBotDeps) {
   }
   const fail = (s: BotSession, code: string, message: string) => save(s, { status: 'failed', error: { code, message } }, code);
   const client = (): BotProviderClient => {
-    if (!deps.client) throw new BotError('BotNotConfigured', 'The notetaker isn’t set up on this server. Add RECALL_API_KEY to the server’s environment.');
+    if (!deps.client) {
+      console.error(JSON.stringify({ event: 'notetaker_not_configured', missing: 'RECALL_API_KEY', outcome: 'failure' })); // setup details for the administrator, not the page
+      throw new BotError('BotNotConfigured', 'The meeting notetaker isn’t available yet — it needs administrator setup.');
+    }
     return deps.client;
   };
   const isFinal = (s: BotSession) => FINAL_STATUSES.includes(s.status);

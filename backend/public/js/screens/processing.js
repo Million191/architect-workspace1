@@ -5,7 +5,7 @@
   var STEPS = [
     { title: 'Uploading', done: 'Uploaded', detail: 'Sending the recording to the server.' },
     { title: 'Transcribing', done: 'Transcribed', detail: 'Turning speech into text with timestamps. Long recordings take a few minutes.' },
-    { title: 'Drafting minutes', done: 'Minutes drafted', detail: 'Writing the summary and pulling out decisions and action items from the transcript.' },
+    { title: 'Drafting minutes', done: 'Minutes drafted', detail: 'Writing the summary from the transcript.' },
   ];
   var DRAFTING = ['speaker identification', 'meeting summary', 'unclear-audio marking', 'discussion summary', 'decision extraction', 'action item extraction', 'minutes review gate'];
 

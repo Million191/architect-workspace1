@@ -38,7 +38,11 @@
 /* Table rows: the whole row opens the meeting; the chevron is only a hint. */
 .meetings-table .meeting-row.row-link:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; background: var(--color-surface-hover); }
 .meetings-table .meeting-row.row-link:hover .col-chevron { color: var(--color-text-muted); }
-.meetings-table thead td { padding: 10px var(--space-2); background: var(--color-surface-subtle); }
+.meetings-table thead th.col-row-actions { width: 88px; }
+.col-row-actions { white-space: nowrap; text-align: right; }
+.col-row-actions .col-chevron { display: inline-flex; vertical-align: middle; margin-left: 2px; }
+.row-more { opacity: 0.55; }
+.meeting-row:hover .row-more, .meeting-row:focus-within .row-more, .row-more:focus-visible, .row-more[aria-expanded="true"] { opacity: 1; }
 .meetings-table .num { text-align: right; font-variant-numeric: tabular-nums; }
 .col-date { white-space: nowrap; }
 .date-main { display: block; color: var(--color-text); }
@@ -47,7 +51,7 @@
 .title-text { font-weight: var(--weight-medium); overflow: hidden; text-overflow: ellipsis; }
 .title-error { font-size: var(--text-xs); color: var(--color-danger); }
 .is-failed .title-cell { flex-direction: column; align-items: flex-start; gap: 0; }
-.rename-btn { opacity: 0; color: var(--color-text-muted); transition: opacity var(--duration) var(--ease); }
+.rename-btn { opacity: 0.45; color: var(--color-text-muted); transition: opacity var(--duration) var(--ease); }
 .meeting-row:hover .rename-btn, .meeting-row:focus-within .rename-btn, .rename-btn:focus-visible { opacity: 1; }
 @media (hover: none) { .rename-btn { opacity: 1; } }
 .rename-input { width: 100%; max-width: 420px; height: 32px; }
@@ -66,7 +70,7 @@ button.activity-row:focus-visible { outline: 2px solid var(--color-accent); outl
 .activity-foot { padding: 0 var(--space-3) var(--space-2); }
 
 /* Sidebar "Change in Settings" and the Draft-only badge */
-.mode-link { display: inline-block; margin-top: 4px; color: var(--color-accent); font-weight: var(--weight-medium); text-decoration: none; }
+.mode-link { display: block; width: fit-content; margin-top: 4px; color: var(--color-accent); font-weight: var(--weight-medium); text-decoration: none; }
 .mode-link:hover { text-decoration: underline; }
 .draft-only-badge { margin-right: var(--space-1); }
 .avatar-button { cursor: pointer; padding: 0; font-family: inherit; }

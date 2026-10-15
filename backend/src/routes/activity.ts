@@ -14,6 +14,24 @@ export interface ActivityItem {
   by?: string;
 }
 
+/** The same line for the same thing within this window is one event (e.g. a double-clicked button). */
+const REPEAT_WINDOW_MS = 2 * 60 * 1000;
+
+/**
+ * Drops repeats: the same kind, meeting/recording, person and wording within REPEAT_WINDOW_MS of a
+ * newer identical entry. `items` must be newest first; the newest of each repeat is kept.
+ */
+export function collapseRepeats(items: ActivityItem[]): ActivityItem[] {
+  const lastKept = new Map<string, number>();
+  return items.filter((item) => {
+    const key = [item.kind, item.runId ?? '', item.recordingId ?? '', (item.by ?? '').trim().toLowerCase(), item.text].join('|');
+    const at = Date.parse(item.at), newer = lastKept.get(key);
+    if (newer !== undefined && Number.isFinite(at) && newer - at <= REPEAT_WINDOW_MS) return false;
+    lastKept.set(key, at);
+    return true;
+  });
+}
+
 const querySchema = z.object({ limit: z.coerce.number().int().min(1).max(100).default(10) });
 
 export interface ActivityDeps {
@@ -31,8 +49,8 @@ export function buildActivity(deps: ActivityDeps): ActivityItem[] {
   for (const a of deps.pipeline?.activity() ?? []) {
     const t = title(a.runId, a.title);
     const text = a.kind === 'draft_ready' ? `Draft minutes ready for ${t}`
-      : a.kind === 'minutes_approved' ? `Minutes approved for ${t}`
-      : a.kind === 'final_approved' ? `Emails approved for ${t} (not sent — draft-only mode)`
+      : a.kind === 'minutes_approved' ? `Minutes reviewed for ${t}`
+      : a.kind === 'final_approved' ? `Emails reviewed for ${t} (not sent — draft-only mode)`
       : `Minutes emailed for ${t}${a.count ? ` to ${a.count} participant${a.count === 1 ? '' : 's'}` : ''}`;
     items.push({ at: a.at, kind: a.kind, text, runId: a.runId, by: a.by });
   }
@@ -41,7 +59,7 @@ export function buildActivity(deps: ActivityDeps): ActivityItem[] {
     const t = title(v.runId);
     const kind: ActivityItem['kind'] = v.kind === 'restore' ? 'minutes_restored' : v.kind === 'amendment' ? 'approved_minutes_edited' : v.kind === 'transcript_correction' ? 'transcript_corrected' : 'minutes_edited';
     const text = kind === 'minutes_restored' ? `An earlier version of the minutes was restored for ${t}`
-      : kind === 'approved_minutes_edited' ? `Approved minutes edited for ${t}${v.reason ? ` — ${v.reason}` : ''}`
+      : kind === 'approved_minutes_edited' ? `Reviewed minutes edited for ${t}${v.reason ? ` — ${v.reason}` : ''}`
       : kind === 'transcript_corrected' ? `Transcript corrected for ${t}${v.reason ? ` — ${v.reason}` : ''}`
       : `Minutes edited for ${t}`;
     items.push({ at: v.at, kind, text, runId: v.runId, by: v.by });
@@ -49,7 +67,7 @@ export function buildActivity(deps: ActivityDeps): ActivityItem[] {
   for (const r of deps.recordings?.listFailed() ?? []) {
     items.push({ at: r.updatedAt, kind: 'recording_failed', text: `Processing failed for ${r.title || 'a recording'}`, recordingId: r.id });
   }
-  return items.sort((a, b) => b.at.localeCompare(a.at));
+  return collapseRepeats(items.sort((a, b) => b.at.localeCompare(a.at)));
 }
 
 export function createActivityRouter(deps: ActivityDeps): Router {

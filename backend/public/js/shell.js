@@ -3,7 +3,6 @@
   var ui = MA.ui, el = ui.el, append = ui.append, store = MA.store;
   var NAV = [
     { page: 'meetings', label: 'Meetings', icon: 'messages-square', match: ['meetings', 'upload', 'processing', 'review', 'send', 'record'] },
-    { page: 'action-items', label: 'Action items', icon: 'list-checks', match: ['action-items'] },
     { page: 'people', label: 'People', icon: 'users', match: ['people'] },
     { page: 'settings', label: 'Settings', icon: 'settings-2', match: ['settings'] },
   ];
@@ -22,7 +21,7 @@
       if (item.match.indexOf(s.page) !== -1) a.setAttribute('aria-current', 'page');
       append(a, MA.icon(item.icon, 'icon-lg'), el('span', item.label, 'label-text'));
       if (item.page === 'meetings' && s.meetings) {
-        var pending = s.meetings.filter(function (m) { return m.status === 'needs_review'; }).length;
+        var pending = s.meetings.filter(function (m) { return MA.REVIEW_STATUSES.indexOf(m.status) !== -1; }).length;
         if (pending) append(a, el('span', String(pending), 'nav-count', { 'aria-label': pending + ' need review' }));
       }
       a.title = item.label;
@@ -33,9 +32,9 @@
     foot.replaceChildren();
     if (s.status) {
       var draftOnly = s.status.emailMode === 'draft-only';
-      var pill = append(el('div', null, 'mode-pill', { title: draftOnly ? 'Email delivery is off for this demo. Drafts are created for human review.' : 'Approved minutes are emailed to participants.' }),
-        MA.icon(draftOnly ? 'shield-check' : 'send'),
-        append(el('div'), el('strong', draftOnly ? 'Draft-only mode' : 'Email delivery on'), draftOnly ? 'Emails are drafted, never sent.' : 'Sent after final approval.',
+      var pill = append(el('div', null, 'mode-pill', { title: draftOnly ? 'Email delivery is off. Drafts are created for human review.' : 'Emails go out only after a person approves them.' }),
+        MA.icon('shield-check'),
+        append(el('div'), el('strong', draftOnly ? 'Draft-only mode' : 'Human approval enabled'), draftOnly ? 'Emails are drafted, never sent.' : 'Nothing is sent without your approval.',
           append(el('a', null, 'mode-link', { href: '?page=settings', id: 'modeSettingsLink' }), 'Change in Settings')));
       pill.querySelector('.mode-link').addEventListener('click', function (e) { e.preventDefault(); go('settings'); });
       foot.appendChild(pill);
@@ -43,14 +42,14 @@
   }
 
   /**
-   * Phone navigation (below 640px): Meetings, Action items, Record, Settings. "Record" opens the same
+   * Phone navigation (below 640px): Meetings, Record, People, Settings. "Record" opens the same
    * recording menu as the header. People is reached from Settings and the search box.
    */
   var BOTTOM = [
     { page: 'meetings', label: 'Meetings', icon: 'messages-square', match: ['meetings', 'upload', 'processing', 'review', 'send'] },
-    { page: 'action-items', label: 'Action items', icon: 'list-checks', match: ['action-items'] },
     { record: true, label: 'Record', icon: 'mic' },
-    { page: 'settings', label: 'Settings', icon: 'settings-2', match: ['settings', 'people'] },
+    { page: 'people', label: 'People', icon: 'users', match: ['people'] },
+    { page: 'settings', label: 'Settings', icon: 'settings-2', match: ['settings'] },
   ];
   function renderBottomNav(s, actions) {
     var bar = document.getElementById('bottomNav');
@@ -59,8 +58,8 @@
       var node;
       if (item.record) {
         node = MA.menu.button(null, 'ghost', [
-          { label: 'In-person meeting', hint: 'Use this device’s microphone', icon: 'users', run: function () { actions.recordMeeting('in_person'); } },
-          { label: 'Online meeting on this computer', hint: 'Zoom, Teams, or Meet in a browser tab', icon: 'monitor', run: function () { actions.recordMeeting('browser_capture'); } },
+          { label: 'Record In Person Meeting', hint: 'Use this device’s microphone', icon: 'users', run: function () { actions.recordMeeting('in_person'); } },
+          { label: 'Record Online Meeting', hint: 'Zoom, Teams, or Meet in a browser tab', icon: 'monitor', run: function () { actions.recordMeeting('browser_capture'); } },
         ], { icon: item.icon, id: 'bottomRecord', ariaLabel: 'Record meeting', className: 'bottom-link bottom-record' });
         node.appendChild(el('span', item.label, 'bottom-label'));
         node.removeAttribute('aria-label');
@@ -68,7 +67,7 @@
         node = append(el('a', null, 'bottom-link', { href: '?page=' + item.page }), MA.icon(item.icon, 'icon-lg'), el('span', item.label, 'bottom-label'));
         if (item.match.indexOf(s.page) !== -1) node.setAttribute('aria-current', 'page');
         if (item.page === 'meetings' && s.meetings) {
-          var pending = s.meetings.filter(function (m) { return m.status === 'needs_review'; }).length;
+          var pending = s.meetings.filter(function (m) { return MA.REVIEW_STATUSES.indexOf(m.status) !== -1; }).length;
           if (pending) node.appendChild(el('span', String(pending), 'bottom-count', { 'aria-label': pending + ' need review' }));
         }
         node.addEventListener('click', function (e) { e.preventDefault(); actions.go(item.page); });
@@ -82,7 +81,7 @@
   function openSearchOverlay(actions) {
     var host = document.getElementById('searchOverlay');
     overlayReturnFocus = document.activeElement;
-    var input = el('input', null, 'input search-overlay-input', { type: 'search', id: 'searchMobile', placeholder: 'Search meetings, transcripts, or action items', autocomplete: 'off', 'aria-label': 'Search meetings, transcripts, or action items' });
+    var input = el('input', null, 'input search-overlay-input', { type: 'search', id: 'searchMobile', placeholder: 'Search meetings and transcripts', autocomplete: 'off', 'aria-label': 'Search meetings and transcripts' });
     var cancel = ui.button('Cancel', 'ghost', function () { closeSearchOverlay(); }, { id: 'searchCancel' });
     var results = el('div', null, 'search-overlay-results', { id: 'searchOverlayResults' });
     host.replaceChildren(append(el('div', null, 'search-overlay-head'), append(el('div', null, 'search-overlay-field'), MA.icon('search'), input), cancel), results);
@@ -122,9 +121,11 @@
 
   function renderTopbar(s) {
     var avatar = document.getElementById('avatar');
-    avatar.textContent = ui.initials(s.form.reviewer);
+    // Initials from the name in Settings; a person icon until a name is set — never "?".
+    var letters = (s.form.reviewer || '').trim() ? ui.initials(s.form.reviewer) : '';
+    avatar.replaceChildren(letters && letters !== '?' ? document.createTextNode(letters) : MA.icon('user'));
     avatar.setAttribute('aria-label', 'Account menu' + (s.form.reviewer ? ' — ' + s.form.reviewer : ' — name not set'));
-    avatar.title = s.form.reviewer || 'Set your name in Settings';
+    avatar.title = s.form.reviewer || 'Set the reviewer name';
   }
 
   // ---- Help and account menus (top bar) ----------------------------------------------------------
@@ -137,22 +138,65 @@
     var mod = /Mac|iPhone|iPad/.test(navigator.platform || '') ? '⌘' : 'Ctrl ';
     return [
       { label: 'Keyboard shortcuts', icon: 'keyboard', id: 'helpShortcuts', run: function () {
-        infoDialog('Keyboard shortcuts', [[mod + 'K', 'Search meetings, transcripts, action items, and commands'], ['Enter', 'Open the selected meeting row'], ['← →', 'Move between the meeting tabs'], ['Esc', 'Close a menu, dialog, or the calendar']]);
+        infoDialog('Keyboard shortcuts', [[mod + 'K', 'Search meetings, transcripts, and commands'], ['Enter', 'Open the selected meeting row'], ['← →', 'Move between the meeting tabs'], ['Esc', 'Close a menu, dialog, or the calendar']]);
       } },
       { label: 'How it works', icon: 'circle-help', id: 'helpHowItWorks', run: function () {
-        infoDialog('How it works', [['1. Add a meeting', 'Upload a recording or record one here.'], ['2. Review the draft', 'AI drafts the minutes and action items; you edit and approve them.'], ['3. Approve the email', 'Check the email to participants and approve it.'], ['4. Delivery', store.get().status && store.get().status.emailMode === 'draft-only' ? 'Draft-only mode is on, so emails are drafted but never sent.' : 'Approved emails are sent to every participant.']]);
+        infoDialog('How it works', [['1. Add a meeting', 'Upload a recording or record one here.'], ['2. Review the draft', 'AI drafts the minutes; you edit and approve them.'], ['3. Approve the email', 'Check the email to participants and approve it.'], ['4. Delivery', store.get().status && store.get().status.emailMode === 'draft-only' ? 'Draft-only mode is on, so emails are drafted but never sent.' : 'Reviewed emails are sent to every participant.']]);
       } },
     ];
+  }
+  /** "Reviewer name": the name recorded on reviews (the same value as Upload → Reviewer). Saved in this browser. */
+  function approverDialog(actions) {
+    var input = el('input', null, 'input', { id: 'approverNameInput', type: 'text', maxlength: '200', autocomplete: 'name', placeholder: 'e.g. Million Abate' });
+    input.value = store.get().form.reviewer || '';
+    var save = ui.button('Save', 'primary', function () {
+      store.setForm({ reviewer: input.value.trim() });
+      actions.refreshShell();
+      MA.cal.dialog.close();
+      ui.toast(input.value.trim() ? 'Reviewer name saved' : 'Reviewer name cleared');
+    }, { id: 'approverNameSave' });
+    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); save.click(); } });
+    MA.cal.dialog.open({ title: 'Reviewer name', variant: 'dialog', initialFocus: '#approverNameInput',
+      body: append(el('div', null, 'field'), el('label', 'Name recorded on your reviews', 'label', { for: 'approverNameInput' }), input),
+      actions: [ui.button('Cancel', 'secondary', function () { MA.cal.dialog.close(); }), save] });
+  }
+  // Is the login switched on (and are we signed in)? Change password / Sign out only make sense then.
+  var signedIn = false;
+  try { fetch('/api/auth/status', { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (st) { signedIn = !!(st && st.signedIn); }).catch(function () { signedIn = false; }); } catch (e) { signedIn = false; }
+
+  /** Change password: current one, new one twice. Other browsers are signed out; this one stays signed in. */
+  function passwordDialog() {
+    function field(id, label, auto) {
+      var input = el('input', null, 'input', { id: id, type: 'password', autocomplete: auto, maxlength: '200' });
+      return { input: input, node: append(el('div', null, 'field'), el('label', label, 'label', { for: id }), input) };
+    }
+    var cur = field('pwCurrent', 'Current password', 'current-password'), next = field('pwNew', 'New password (at least 6 characters)', 'new-password'), again = field('pwAgain', 'Repeat new password', 'new-password');
+    var error = el('p', '', 'help help-error', { role: 'alert', id: 'pwError' });
+    var save = ui.button('Change password', 'primary', function () {
+      error.textContent = '';
+      if (!cur.input.value || !next.input.value) { error.textContent = 'Type your current password and a new one.'; return; }
+      if (next.input.value.length < 6) { error.textContent = 'Use at least 6 characters for the new password.'; next.input.focus(); return; }
+      if (next.input.value !== again.input.value) { error.textContent = 'The two new passwords don’t match.'; again.input.focus(); return; }
+      return fetch('/api/auth/password', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ current: cur.input.value, next: next.input.value }) })
+        .then(function (r) { return r.json().catch(function () { return {}; }).then(function (b) { if (!r.ok) throw new Error(b.message || 'Couldn’t change the password. Try again.'); }); })
+        .then(function () { MA.cal.dialog.close(); ui.toast('Password changed. Other browsers were signed out.'); })
+        .catch(function (err) { error.textContent = err.message; });
+    }, { id: 'pwSave' });
+    MA.cal.dialog.open({ title: 'Change password', variant: 'dialog', initialFocus: '#pwCurrent',
+      body: append(el('div', null, 'recipient-form'), cur.node, next.node, again.node, error),
+      actions: [ui.button('Cancel', 'secondary', function () { MA.cal.dialog.close(); }), save] });
   }
   function accountItems(actions) {
     var name = (store.get().form.reviewer || '').trim();
     return [
-      { label: name || 'Set your name', hint: name ? 'Your name on approvals — change it in Settings' : 'Recorded on every approval', icon: 'user', id: 'accountProfile', run: function () {
-        actions.go('settings');
-        setTimeout(function () { var f = document.getElementById('settingsName'); if (f) f.focus(); }, 0);
-      } },
+      { label: name || 'Set reviewer name', hint: name ? 'Your name on reviews — click to change' : 'Recorded on every review', icon: 'user', id: 'accountProfile', run: function () { approverDialog(actions); } },
       { label: 'Settings', icon: 'settings-2', id: 'accountSettings', run: function () { actions.go('settings'); } },
-    ];
+    ].concat(signedIn ? [
+      { label: 'Change password', icon: 'lock', id: 'accountPassword', run: function () { passwordDialog(); } },
+      { label: 'Sign out', icon: 'log-out', id: 'accountSignOut', run: function () {
+        fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }).catch(function () { /* signed out locally anyway */ }).then(function () { window.location.assign('/login'); });
+      } },
+    ] : []);
   }
 
   /** Commands offered in the top-bar search results (Ctrl K focuses the search box). */
@@ -161,14 +205,13 @@
     var list = [
       { group: 'Actions', label: 'Upload meeting', icon: 'upload', run: function () { actions.go('upload'); } },
       { group: 'Navigate', label: 'Go to meetings', icon: 'messages-square', run: function () { actions.go('meetings'); } },
-      { group: 'Navigate', label: 'Go to action items', icon: 'list-checks', run: function () { actions.go('action-items'); } },
       { group: 'Navigate', label: 'Go to people', icon: 'users', run: function () { actions.go('people'); } },
       { group: 'Navigate', label: 'Go to settings', icon: 'settings-2', run: function () { actions.go('settings'); } },
       { group: 'Actions', label: 'Switch to light theme', icon: 'sun', run: function () { actions.setTheme('light'); } },
       { group: 'Actions', label: 'Switch to dark theme', icon: 'moon', run: function () { actions.setTheme('dark'); } },
     ];
     (s.meetings || []).forEach(function (m) {
-      list.push({ group: 'Meetings', label: m.title || 'Untitled meeting', hint: ui.longDate(m.date), icon: 'file-text', run: function () { actions.openMeeting(m.runId); } });
+      list.push({ group: 'Meetings', label: m.title || 'Untitled meeting', hint: ui.longDate(MA.dashboard.sel.localDay(m)), icon: 'file-text', run: function () { actions.openMeeting(m.runId); } });
     });
     return list;
   }

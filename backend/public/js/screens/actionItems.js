@@ -8,7 +8,7 @@
     render: function (root, ctx) {
       var s = ctx.state;
       root.appendChild(ui.pageHeader('Action items', {
-        meta: el('p', 'Everything assigned in approved meetings. Items are recorded when a meeting gets its final approval.', 'meta'),
+        meta: el('p', 'Everything assigned in reviewed meetings. Items are recorded when a meeting gets its final approval.', 'meta'),
         actions: [ui.button('Upload meeting', 'primary', function () { ctx.actions.go('upload'); }, { icon: 'upload', id: 'primaryAction' })],
       }));
       var card = el('section', null, 'card');

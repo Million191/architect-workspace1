@@ -70,7 +70,8 @@ describe('This week calendar — open and view', () => {
     expect(page.doc.getElementById('weekCalendar')).toBeNull();
     expect(card(page).getAttribute('aria-expanded')).toBe('false');
     expect(card(page).getAttribute('aria-controls')).toBe('weekCalendar');
-    await waitFor(() => text(page, '#meetingsCard-value') === '2', 'count excludes the cancelled meeting');
+    // The card counts what the table lists (recorded meetings), never bare calendar entries.
+    await waitFor(() => text(page, '#meetingsCard-value') === '0', 'card counts recorded meetings only');
 
     card(page).click();
     await waitFor(() => !!block(page, 'Q4 budget review'), 'meeting blocks');
@@ -80,7 +81,7 @@ describe('This week calendar — open and view', () => {
     expect(q4.getAttribute('aria-label')).toMatch(new RegExp(`^Q4 budget review, ${WEEKDAY(1)} 10:00\\sAM, upcoming$`));
     expect(q4.style.width).toContain('50%');
     expect(block(page, 'Vendor call')!.className).toContain('is-cancelled');
-    expect(text(page, '.cal-foot')).toBe('UpcomingNeeds reviewApprovedSentPostponedCancelled');
+    expect(text(page, '.cal-foot')).toBe('UpcomingNeeds reviewIn progressEmails draftedSentPostponedCancelled');
 
     // Show cancelled toggle
     const showCancelled = page.doc.getElementById('calShowCancelled') as HTMLInputElement;
@@ -134,7 +135,7 @@ describe('This week calendar — open and view', () => {
     expect(retro.className).toContain('is-needs_review');
     expect(retro.getAttribute('aria-label')).toMatch(/needs review$/);
     retro.click();
-    await waitFor(() => !!page.doc.getElementById('transcriptHeading'), 'the review screen');
+    await waitFor(() => !!page.doc.querySelector('.wf-steps'), 'the review screen');
   });
 });
 
@@ -194,7 +195,7 @@ describe('This week calendar — add meetings', () => {
     await waitFor(() => text(page, '#toasts').includes('Meeting added'), 'toast');
     await waitFor(() => !page.doc.querySelector('[role="dialog"]') && !!block(page, 'Weekly team sync'), 'new block');
     expect(block(page, 'Weekly team sync')!.className).toContain('is-upcoming');
-    await waitFor(() => text(page, '#meetingsCard-value') === '1', 'count updated');
+    expect(text(page, '#meetingsCard-value')).toBe('0'); // a calendar entry isn't a recorded meeting
   });
 
   it('clicking an empty slot pre-fills that day and time; dragging pre-fills start and end with a live preview', async () => {

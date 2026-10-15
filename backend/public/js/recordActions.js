@@ -178,7 +178,7 @@
           u.stop();
           local.finished = true;
           return MA.chunks.local.deleteRecording(id).then(function () {
-            store.set({ busy: false, run: res.run, page: 'review', recovered: (store.get().recovered || []).filter(function (x) { return x.id !== id; }),
+            store.set({ busy: false, run: res.run, page: 'review', reviewStep: 'meeting', editing: null, recovered: (store.get().recovered || []).filter(function (x) { return x.id !== id; }),
               upload: { id: null, sentFraction: 0, stage: null, error: null, failedStage: null, startedAt: null }, save: { state: 'idle' }, selectedRecipient: 0 });
             ui.toast('Draft minutes are ready for your review');
             helpers.loadLists();

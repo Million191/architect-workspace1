@@ -4,8 +4,8 @@
   var ui = MA.ui, el = ui.el, append = ui.append;
 
   var RECORD_OPTIONS = [
-    { mode: 'in_person', label: 'Record in person', hint: 'Use this device’s microphone', icon: 'mic' },
-    { mode: 'browser_capture', label: 'Record an online meeting', hint: 'Zoom, Teams, or Meet in a browser tab', icon: 'monitor' },
+    { mode: 'in_person', label: 'Record In Person Meeting', hint: 'Use this device’s microphone', icon: 'mic' },
+    { mode: 'browser_capture', label: 'Record Online Meeting', hint: 'Zoom, Teams, or Meet in a browser tab', icon: 'monitor' },
   ];
   function store() { return MA.store.get(); }
 
@@ -25,7 +25,7 @@
     }, { icon: 'more-horizontal', id: 'moreActions', ariaLabel: 'More actions', className: 'narrow-only btn-icon-touch' });
     var main = ui.button('New meeting', 'primary', function () { a.go('upload'); }, { icon: 'plus', id: 'primaryAction' });
     main.setAttribute('aria-label', 'New meeting: upload a recording');
-    var caret = MA.menu.button(null, 'primary', [{ label: 'Upload file', hint: 'Audio or video of a meeting', icon: 'upload', id: 'newUpload', run: function () { a.go('upload'); } }].concat(recordItems),
+    var caret = MA.menu.button(null, 'primary', [{ label: 'Upload Recording', hint: 'Audio or video of a meeting', icon: 'upload', id: 'newUpload', run: function () { a.go('upload'); } }].concat(recordItems),
       { icon: 'chevron-down', id: 'newMeetingMenu', ariaLabel: 'More ways to add a meeting', className: 'split-caret' });
     return [calendarButton, more, append(el('div', null, 'split-button', { role: 'group', 'aria-label': 'New meeting' }), main, caret)];
   }
@@ -58,11 +58,21 @@
         root.appendChild(append(el('div', null, 'card card-pad'), el('span', null, 'skeleton skeleton-line', { style: 'width:40%' }), el('span', null, 'skeleton skeleton-line', { style: 'width:70%' }), el('span', null, 'skeleton skeleton-line', { style: 'width:55%' })));
         return;
       }
-      var meetings = s.meetings.slice();
+      // Each meeting once: by run id (or recording id for failed recordings). A failed recording being
+      // processed again shows only as the "processing" row until it finishes.
+      var seenIds = {}, retrying = s.upload.id && !s.upload.error ? s.upload.recordingId : null;
+      var meetings = s.meetings.filter(function (m) {
+        var key = m.runId ? 'run:' + m.runId : m.recordingId ? 'rec:' + m.recordingId : null;
+        if (retrying && m.recordingId === retrying && !m.runId) return false;
+        if (!key) return true;
+        if (seenIds[key]) return false;
+        seenIds[key] = true;
+        return true;
+      });
       if (s.upload.id && !s.upload.error) {
-        meetings.unshift({ runId: null, title: s.upload.title || s.form.title || (s.form.file && s.form.file.name) || 'New meeting', participants: [], status: 'processing', stage: 'processing' });
+        meetings.unshift({ runId: null, title: s.upload.title || s.form.title || (s.form.file && s.form.file.name) || 'New meeting', participants: [], status: 'processing', stage: 'processing', startedAt: new Date(s.upload.startedAt || Date.now()).toISOString() });
       }
-      MA.dashboard.renderStats(root, ctx);
+      MA.dashboard.renderStats(root, ctx, meetings); // the card counts exactly what the table lists
       if (s.calendar.open) MA.cal.panel.render(root, ctx);
       MA.dashboard.renderTable(root, ctx, meetings);
       MA.dashboard.renderActivity(root, ctx);

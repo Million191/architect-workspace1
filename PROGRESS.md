@@ -3327,3 +3327,614 @@
     speaker_timeline_download_url field and `delete_media` are from Recall's docs and listed in the
     setup guide to confirm. Without accounts, per-person visibility of recordings is not enforced.
     Failed notetaker sessions show on the calendar/banner, not in the dashboard table.
+
+- [x] Dashboard fixes: Meetings count bug, avatar, header, timezone-correct dates, tooltips
+  - Date: 2026-10-06
+  - Session: CC-20261004-k7q2
+  - What changed: New public/js/dashboard/selectors.js is the single source for the Meetings card,
+    its "vs last week/month" line, the tab counts and the table rows (local time zone, Monday
+    weeks). Root cause of the bad count: the card counted calendar entries from /api/schedule
+    (including upcoming meetings with no recording) while the table lists recorded meetings, and
+    server dates/times are UTC but were compared with local week bounds. Dates and times now read
+    as UTC and display in local time (table, cards, calendar recorded chips, search, review header);
+    /api/schedule filters recorded meetings by the real instant. Top-bar avatar: initials, else a
+    person icon (never "?"). Chevron header cell is now an empty th, so the header band and divider
+    span the full width. Rename pencil faintly visible at rest. Sidebar "Change in Settings" on its
+    own line. Per-avatar name tooltips, and "+N" lists the rest.
+  - Verification: new routes/dashboardCounts.test.ts (7, runs in America/Los_Angeles: card count ==
+    table rows per range; delta == current − previous from the same function; Sunday/Monday + UTC
+    boundaries); updated dashboardUi and calendarUi tests; full suite 547 passed (1 skipped);
+    `tsc --noEmit` passes; `node --check` on all page scripts; headless Chrome checks (card 3 = 3
+    rows, local 8:21 PM shown instead of UTC 3:21 AM, inline rename "Progress Repaort" → "Progress
+    Report", avatar icon then "MA").
+  - Notes: No schema change needed. The card now counts recorded meetings only (calendar entries
+    without a recording are not counted). The card's range filters the table only when the card is
+    clicked (removable chip), unchanged. "Emails drafted", "Sent" and "Failed" already existed and
+    were checked.
+
+- [x] Guided human-in-the-loop review: step-by-step workflow, Edit/Save, statuses, delete, email edit
+  - Date: 2026-10-06
+  - Session: CC-20261004-k7q2
+  - What changed: Review is now six steps (Meeting → Transcript → Summary → Decisions → Approval →
+    Email) with a step bar, Back / Next (saves first, so no work is lost; refresh returns to the step
+    via ?step=), and gating (Approval only after Transcript, Summary and Decisions are opened; Email
+    only after "Approve minutes"). Every step has Edit / Cancel / Save changes (Cancel restores the
+    snapshot). Transcript corrections save on the server and the same word fix is applied to the
+    minutes; Meeting step edits title and participants (renames reach transcript speakers, addresses
+    and minutes). Approval section: Edit, Request changes (recorded on Gate #1, nothing approved),
+    Approve minutes with an inline "Approved by" name. Email step: To / Subject / body, Edit email
+    (Gate #2 revision), Approve & send; draft-only shows "Draft created — sending is disabled."
+    Statuses: Processing / Needs review / In progress / Approved / Sent (In progress = any review work;
+    Approved = explicit approval). ••• More → Edit meeting / Delete meeting with confirmation; delete
+    removes the run from all pipeline stores plus its minutes document, recording and calendar link
+    (calendar entry unlocked). Sidebar: "Human approval enabled — Nothing is sent without your
+    approval." unless draft-only. New: services/meetingPipeline/reviewActions.ts,
+    routes/meetingReview.ts, public/js/review/workflow.js, public/js/review/steps.js,
+    public/styles/workflow.css; yellow In-progress token.
+  - Verification: new reviewActions.test.ts (9), meetingReview.test.ts (5),
+    reviewWorkflowUi.integration.test.ts (5); journey, editor, spell-check, recording, search,
+    calendar, dashboard and mobile UI tests updated to the step flow; full suite 566 passed
+    (1 skipped); `tsc --noEmit` passes; headless Chrome on localhost:3000 (real Whisper + Claude,
+    draft-only): upload → Needs review → transcript fix "ACME"→"Acme" carried into minutes → In
+    progress → summary edit survives refresh → Approval Next disabled → Approve minutes → Approved →
+    email edit saved → Approve draft → "Draft created — sending is disabled" → delete with confirm;
+    375px no horizontal scroll (fixed a long-address overflow on the Email step).
+  - Notes: Status vocabulary changed per request: minutes approved with the email still awaiting
+    approval now shows "Approved" (was "Emails drafted"). Delete keeps the sent-email log so a
+    re-upload never emails anyone twice; rows already written to the external action-items.json
+    tracker carry no meeting id and are not removed by delete. Step-visit memory is per browser
+    (localStorage); meeting content is server-side.
+
+- [x] Editable Meeting Summary: "Edit Summary", AI-draft label, edited text used in the sent email
+  - Date: 2026-10-06
+  - Session: CC-20261004-k7q2
+  - What changed: Summary step is titled "Meeting Summary" with an "Edit Summary" button (decisions:
+    "Edit decisions & action items"); while editing, each section is a bordered text area (Cancel /
+    Save changes), read mode shows plain text. A persistent "AI-generated draft — review and edit
+    before approval." label shows on Summary and Decisions until approval. AI help (incl.
+    Regenerate) is offered only in Edit mode and only applies on an explicit Replace — nothing
+    regenerates on its own.
+  - Verification: new reviewWorkflowUi test (send mode): label + button shown, rewrite saved and
+    displayed at once, kept through Next → Approval → Back and a fresh reopen, approved and sent —
+    every outbox email contains the edited summary and not the AI original; full suite 567 passed
+    (1 skipped); `tsc --noEmit` passes; Chrome screenshots of read and edit modes.
+  - Notes: Real sending needs EMAIL_MODE=smtp plus SMTP settings in backend/.env (currently
+    draft-only), then a server restart.
+
+- [x] Summary page: per-section Edit, "Edit Summary" on approved minutes, re-approval after edits
+  - Date: 2026-10-06
+  - Session: CC-20261004-k7q2
+  - What changed: Every summary (and decisions) section has its own ✏ Edit → bordered text area with
+    Cancel / Save changes in the section header; the timestamp stays. "Edit approved minutes" is
+    replaced by "Edit Summary". Editing approved minutes warns "Editing approved minutes will require
+    approval again."; edits stay local (no autosave) until Save changes, which calls the new
+    POST /api/minutes/:runId/reopen: Gate #1 back to pending review, email draft, final-approval
+    record and tracked items withdrawn (transcript/addresses kept), status Needs review, Email step
+    locked until approved again. Approval rounds are derived from Gate #1 revisions; the sent-email
+    log key gains the round after a reopen (`runId:rN:name`, round 0 unchanged), so corrected minutes
+    of an already-emailed meeting go out once as "Updated minutes: …". Approved meetings count their
+    review steps as visited, so re-approval doesn't require reopening the Transcript step.
+  - Verification: new reviewWorkflowUi tests (per-section edit/cancel/save, persistence across
+    Next/Back/refresh; approved → warning → cancel keeps approval, no autosave → save → Needs review,
+    approve-emails 409, re-approval email uses correction; already-sent → "Updated minutes" once),
+    reviewActions reopen tests (2), minutesEditorUi approved test rewritten; full suite 572 passed
+    (1 skipped); `tsc --noEmit` passes; localhost:3000 with real Whisper + Claude: section edit saved,
+    kept through Next/Next/Back/Back and refresh, approved, Edit Summary → warning → save → Needs
+    review, email locked, re-approved, email shows the new text; test meeting deleted afterwards.
+  - Notes: No persisted schema change (round is derived; old sent-email keys unchanged). Corrections
+    are always typed by the user — nothing is hard-coded or regenerated automatically.
+
+- [x] "Emails drafted" status (option B) and the "Send minutes for …?" confirmation dialog
+  - Date: 2026-10-07
+  - Session: CC-20261004-k7q2
+  - What changed: Minutes approved with the email written (waiting for Approve & send, or approved in
+    draft-only mode) now show "Emails drafted" (mail icon, accent badge) on the table, tabs, calendar
+    blocks/legend and review header; the Approved tab includes it. Approve & send (real sending only)
+    opens a confirmation in the app's existing modal: "Send minutes for <title>?", every participant
+    with name + address and a checkbox (ticked by default; no address → flagged and unselectable),
+    "Cancel" / "Yes, send to N" (disabled at 0), spinner + no double clicks while sending, Sent + toast
+    on success, error shown in the dialog (still open, retry works). POST /approve-emails accepts an
+    optional `recipients` list (zod: 1–100 names; unknown name 409); the selection is saved on the
+    final-approval record (optional `selectedRecipients`) so a replay never emails anyone unticked.
+    Draft-only mode keeps "Approve draft" without the dialog. New: public/js/review/sendDialog.js.
+  - Verification: new sendDialogUi.integration.test.ts (5: defaults/flags/count, only ticked people
+    emailed + replay safe, Cancel, error stays open then retry, API validation, draft-only); status
+    tests updated (dashboard, badges, calendar legend, workflow, pipeline); full suite 577 passed
+    (1 skipped); `tsc --noEmit` passes; `node --check` on all page scripts; Chrome screenshot of the
+    dialog on the demo server.
+  - Notes: No migration: the new record field is optional and old records mean "everyone".
+
+- [x] "Approve & send" for meetings approved while sending was off
+  - Date: 2026-10-07
+  - Session: CC-20261004-k7q2
+  - What changed: A meeting finally approved in draft-only mode (stage approved_not_sent) now shows
+    "Approved while sending was off — this email hasn't been sent yet." and an Approve & send button
+    on its Email step once EMAIL_MODE=smtp; it opens the same participant confirmation dialog. The
+    pipeline's new sendEarlierDraft path sends exactly the approved emails to the ticked people (once
+    each via the sent-email log), then marks the record as a sent approval (stage sent). Edit email is
+    not offered for these (what was approved is what is sent). Status/footer/stepper treat such a
+    meeting as still having an email to send.
+  - Verification: new sendDialogUi test (approved in draft-only, restarted with sending on → button,
+    only the ticked participant emailed, Sent, replay sends nothing more); full suite 578 passed
+    (1 skipped); `tsc --noEmit` passes; localhost:3000: "saf" shows the callout and Approve & send
+    (opened only, nothing sent).
+
+- [x] Email step: add recipients and missing email addresses before sending
+  - Date: 2026-10-07
+  - Session: CC-20261004-k7q2
+  - What changed: The Recipients card has "+ Add" (name + email) and an email without an address shows
+    "Add email". POST /api/meetings/:runId/recipients (zod: name, valid email) adds the person with
+    their own email drafted from the approved minutes (new exported draftEmailFor; same subject line
+    as the others), or only updates the address when the person is already listed. Works while the
+    email awaits Approve & send (Gate #2 revision) and for meetings approved while sending was off
+    (saved approval + email gate kept in step); refused once sent or before the minutes are approved.
+    Added people are recipients only (not meeting participants) and appear ticked in the send dialog.
+  - Verification: new sendDialogUi tests (UI add + validation + Add email → "Yes, send to 4" → all four
+    emailed, Add hidden after sending; API validation, same person updates address, 409 after sending
+    and before approval, earlier-draft path); full suite 580 passed (1 skipped); `tsc --noEmit`
+    passes; localhost:3000: "saf" shows "+ Add" and "Add email" (opened only, nothing saved or sent).
+
+- [x] Email step: add several recipients at once
+  - Date: 2026-10-07
+  - Session: CC-20261004-k7q2
+  - What changed: The Add dialog ("Add recipients") has one row per person (name + email, remove ✕),
+    "Add another person", and a button that counts ("Add 3 recipients"); pasting "Name <email>, …"
+    into a name box fills one row per person. Every row is checked in the page and again on the
+    server: POST /api/meetings/:runId/recipients now also takes { people: [...] } (1–50, unique names,
+    valid emails) and adds nothing if any row is bad; one request adds everyone. "Add email" for a
+    participant without an address is its own small dialog.
+  - Verification: new sendDialogUi tests (paste → rows, add another, half-filled row caught, one
+    request for three, "Yes, send to 5", all emailed; API batch validation incl. all-or-nothing);
+    full suite 582 passed (1 skipped); `tsc --noEmit` passes; localhost:3000 dialog viewed with two
+    rows ("Add 2 recipients"), nothing saved.
+
+- [x] Recipients by email only; Approve & send no longer blocked by a missing name
+  - Date: 2026-10-07
+  - Session: CC-20261004-k7q2
+  - What changed: "Add recipients" takes email addresses only (one per row, "Add another email",
+    Enter submits; pasting several addresses — commas, new lines, or "Name <email>" — fills one row
+    each). The greeting name comes from the address ("dana.cruz@…" → "Dana Cruz"); an address that
+    already gets the email is skipped, and a derived name belonging to someone else uses the address
+    as the name, so nobody's address is overwritten. API batch rows take an optional name; duplicates
+    are checked by address. Approve & send without a name in Settings now asks "Your name (recorded on
+    the approval)" inside the send dialog (send disabled until filled; remembered afterwards) instead
+    of stopping with a toast.
+  - Verification: sendDialogUi tests updated/added (email-only add, pasted list → rows, duplicate
+    caught, one request, "Yes, send to 6"; name asked in the dialog then sent, approvedBy recorded);
+    full suite 582 passed + 1 timing flake in reviewWorkflowUi under load that passes alone and as a
+    file; `tsc --noEmit` passes.
+
+- [x] People directory: only real people (no leftovers), + Add person, editable email, history
+  - Date: 2026-10-07
+  - Session: CC-20261004-k7q2
+  - What changed: Root cause of the "sample" people (Priya, Sara Lee, Tom Ward): stored records in
+    backend/data/people.json created from deleted test meetings — the directory added everyone seen
+    in a meeting but never removed anyone. Now each People refresh prunes people who are in no current
+    meeting or calendar entry unless added by hand ('manual' origin, new) or corrected (edited name or
+    photo). New POST /api/people (+ Add person: name, email, optional https photo; same address
+    updates, never duplicates) and PUT /api/people/:id accepts `email` (re-keys the person; 409 if
+    taken); a corrected address is carried into unsent meetings (renameAddress over recipient maps and
+    draft-only approvals; sent emails keep their address) and calendar entries created in the app
+    (renameParticipantEmail). People page: "Everyone from your meetings.", + Add person, empty state
+    "No participants yet …", Email field per person, expandable history (meetings + action items
+    matched by email/name). Upload/record example text is neutral. The People page now redraws when
+    the meeting list arrives (history was empty on slow loads).
+  - Verification: new peopleDirectory.test.ts (7: empty app, dedupe across meetings, prune after
+    delete keeps added/corrected, add validation + no duplicate, email re-key + propagation + 409,
+    sent keeps address) and peopleDirectoryUi.integration.test.ts (2); people.test updated; full suite
+    592 passed (1 skipped); `tsc --noEmit` passes; localhost:3000: first load pruned the three test
+    leftovers (backup kept in scratchpad), one real person remains.
+  - Notes: No schema change beyond the additive 'manual' origin value.
+
+- [x] Calendar integrations: plain-language Settings experience, organizer import, friendly failures
+  - Date: 2026-10-07
+  - Session: CC-20261004-k7q2
+  - What changed: Settings → Integrations shows no setup details (no env names, client ids, docs path);
+    "Connect Google Calendar" / "Connect Outlook" buttons (disabled with "isn't available yet — needs
+    administrator setup" when the server isn't configured); connected state "✓ Google Calendar
+    connected" + account email + Sync now / Disconnect; failures in plain words with Try again
+    (connection or sync) or Reconnect (expired/revoked authorization). Service friendlyError() maps
+    error classes to user text; routes redirect with calendarProvider + plain message and log the
+    error class only; missing setup is logged at startup (setting names only, never values). The
+    event organizer is imported (schedule `organizer`, added to participants, shown in details).
+    Files: calendarSyncService.ts, providers.ts, schedule/types.ts, scheduleService.ts,
+    routes/calendarSync.ts, server.ts, public/js/calendar/{sync,details}.js, screens/settings.js,
+    styles/calendar.css, tests.
+  - Verification: new calendarIntegration.test.ts (7, full OAuth route flow against fake Google and
+    Microsoft servers: PKCE + read-only scope, encrypted tokens, upcoming meeting with organizer and
+    participants, People without duplicates, no secrets in page data, declined/expired/revoked/API-down
+    states, disconnect/reconnect, no calendar writes); calendarSyncUi.integration.test.ts (5);
+    calendarSync.test.ts updated; full suite 601 passed (1 skipped); `tsc --noEmit` passes.
+  - Notes: Real Google/Microsoft authorization NOT tested — no OAuth client ids or
+    TOKEN_ENCRYPTION_KEY are configured locally. Setup steps in docs/CALENDAR_SYNC_SETUP.md.
+
+- [x] Remove duplicates across the Meeting Assistant dashboard
+  - Date: 2026-10-09
+  - Session: CC-20261004-k7q2
+  - What changed: New pure rules module `services/meetingPipeline/dedupe.ts`, used everywhere:
+    meetings — the same file is one meeting whatever source it is uploaded as (content-hash
+    match), a double-submitted upload runs once (in-flight map per file hash), and the same title
+    + same real scheduled start is one meeting (uploads/recordings for a calendar meeting now pass
+    its start as `scheduledAt`; ingestion time is never used to match); attendees — one per email
+    (trimmed, any case), a bare name merges with the same name given with an address, and a typed
+    name matches the one person in People with that name (ambiguous names stay name-only); "add
+    recipient" skips an address already on the meeting; action items — one per (task, owner)
+    within a meeting at draft creation, minutes-doc saves, replace/amend/revise, and read-time
+    (getRun, tracked list) so older saved meetings are tidied too; Recent activity — identical
+    entries within 2 minutes collapse (`collapseRepeats`); dashboard — each meeting once by run id
+    / recording id, and a failed recording being reprocessed shows only as its processing row.
+    Files: dedupe.ts, draftMinutes.ts, meetingPipelineService.ts, meetingQueries.ts,
+    reviewActions.ts, minutesDocService.ts, routes/{meetingPipeline,recordings,activity}.ts,
+    server.ts, public/js/screens/meetings.js, tests.
+  - Verification: new dedupe.test.ts (5), duplicates.test.ts (6: same file / other source /
+    parallel upload, title + scheduled start, attendee merge + People match, action items in doc +
+    count, recipient re-add, double-clicked send → one send, one activity line) and
+    duplicatesUi.integration.test.ts (1, fails without the fix); peopleDirectoryUi test made to
+    wait for the full history text (load-order race); full suite 613 passed (1 skipped);
+    `tsc --noEmit` passes. No ESLint is configured in backend, so lint = tsc + `node --check`.
+  - Notes: Assumptions — title + start matching only with a real scheduled start; a typed name
+    is matched only when exactly one person has it; the first of duplicate action items is kept.
+
+- [x] Duplicate prevention: store constraints, double-submit guards, one-time cleanup script
+  - Date: 2026-10-09
+  - Session: CC-20261004-k7q2
+  - What changed: (1) Constraints — new `services/storage/uniqueIndex.ts` (unique indexes + check
+    constraints on the JSON key→record stores; a violating write throws UniqueConstraintError → 409)
+    and `services/storage/constraints.ts`, applied where current data already complies: people
+    UNIQUE(lower(trim(email))) + stored-under-that-key; schedule UNIQUE(provider, calendarId,
+    eventId) and UNIQUE(title, start) for app-created, non-cancelled entries; meetings
+    UNIQUE(audio content hash) on drafts and approvals; no repeated (task, owner) action items in a
+    meeting's draft, approval, or minutes document. Recipient-address rule defined but NOT applied
+    (existing data violates it; needs the cleanup). Startup logs `data_duplicates_found` (rule
+    names + counts only). Schedule "create" returns the existing meeting for the same title +
+    start (200, duplicate: true); reviseMinutes dedupes before saving. (2) Double-submit — every
+    ui.button ignores the second click of a double-click (event.detail ≥ 2) and stays disabled
+    (aria-busy) while its returned promise is pending (week arrows opt out); core/api.js merges an
+    identical write already in flight into one request. (3) One-time cleanup —
+    `src/scripts/mergeDuplicates.ts` (`npm run cleanup:duplicates`, dry run by default; `--apply`
+    backs up to data/backups/, refuses while the app is running, merges, re-checks) with
+    `services/storage/duplicateCleanup/{plan,apply,dataSet}.ts`. NOT applied to real data —
+    dry-run list shown to the user for approval.
+  - Verification: new uniqueIndex.test.ts (6), duplicateCleanup.test.ts (2: every duplicate kind
+    merged with links kept, idempotent, backup), doubleSubmitUi.integration.test.ts (2); bot and
+    schedule fixtures given distinct titles (same title + start is now one meeting); full suite
+    623 passed (1 skipped); `tsc --noEmit` passes; `node --check` on all 49 frontend files; dry run
+    on backend/data: 1 merge, 1 for review, data files unchanged (md5 checked).
+  - Notes: No SQL database exists; schema changes (stored hash/start fields, address-keyed
+    recipients, optional SQLite) proposed to the user, not applied. No ESLint configured.
+
+- [x] People page: Name · Role · Email table with per-row Edit; new optional Role field
+  - Date: 2026-10-09
+  - Session: CC-20261004-k7q2
+  - What changed: People page redrawn as a table (columns Name, Role, Email, Edit) using the shared
+    `.table` style; each person's meetings/action-items history stays as a small line under the
+    name; name-source notes ("Name from a meeting invite") removed; "Edit" opens the row in place
+    (Name, Role, Email, optional Photo link; Save/Cancel; Enter saves, Esc cancels); on phones rows
+    stack as cards with Role/Email labels. "+ Add person" asks Name, Role (optional), Email.
+    Backend: optional `role` on PersonRecord/Person (additive; older records have none), set via
+    POST/PUT /api/people (Zod: ≤100 chars, no < > or line breaks; null clears), included in People
+    search, and a person with a role is kept when their meetings are deleted. Files:
+    people/types.ts, peopleService.ts, routes/people.ts, public/js/screens/people.js,
+    public/styles/people.css, tests.
+  - Verification: peopleDirectory.test.ts role test (add/edit/clear/validate/search/kept);
+    peopleUi + peopleDirectoryUi updated for the Edit step and Role column; full suite 624 passed
+    (1 skipped); `tsc --noEmit` passes; `node --check` on frontend; screenshots of localhost:3000
+    (desktop table, edit row, 390px phone).
+
+- [x] Upload page: "Your name" field renamed to "Approver"
+  - Date: 2026-10-09
+  - Session: CC-20261004-k7q2
+  - What changed: public/js/screens/upload.js — label "Your name" → "Approver", placeholder "Name of
+    the person approving the minutes", missing-field hint "your name" → "the approver". Same saved
+    value as before (form.reviewer); no behavior change.
+  - Verification: meetingAssistantUi test updated for the new hint; full suite 624 passed (1 skipped);
+    `node --check` passes.
+
+- [x] Settings → Integrations: Outlook card hidden until Outlook is set up
+  - Date: 2026-10-09
+  - Session: CC-20261004-k7q2
+  - What changed: public/js/calendar/sync.js — the Outlook card ("Connect Outlook") is shown only when
+    Microsoft OAuth is configured on the server or an Outlook connection exists; Google always shows.
+    Backend Outlook support untouched (adding MS_CLIENT_ID/SECRET later brings the card back).
+  - Verification: calendarSyncUi "not set up" test asserts no Outlook button; full suite 624 passed (1 skipped).
+
+- [x] Meeting notetaker: plain-language "not available" text; setup details only in the server log
+  - Date: 2026-10-09
+  - Session: CC-20261004-k7q2
+  - What changed: Settings card now says "The meeting notetaker isn't available yet. It needs
+    administrator setup…" (was RECALL_API_KEY / RECALL_WEBHOOK_SECRET / docs path); the calendar
+    meeting's notetaker hint, the BotNotConfigured message (service + route), and Recall auth/400
+    errors are plain words too (no env names, no raw provider text — the provider body was already
+    logged). New logs: `notetaker_not_configured` on a send attempt and `notetaker_setup_incomplete`
+    at startup (setting names only). Files: public/js/screens/settings.js, public/js/notetaker/ui.js,
+    meetingBotService.ts, recallClient.ts, routes/notetaker.ts, server.ts, tests.
+  - Verification: notetaker.test, notetakerUi, recallClient tests updated to assert plain wording
+    and no env names; full suite 624 passed (1 skipped); `tsc --noEmit` passes; localhost:3000
+    Settings screenshot: no technical text, Outlook hidden, Connect Google Calendar enabled.
+
+- [x] Settings: "Your name" section removed; approver name set from the account menu
+  - Date: 2026-10-09
+  - Session: CC-20261004-k7q2
+  - What changed: public/js/screens/settings.js — "Your name" card and its field removed (page note now
+    "Appearance is saved in this browser…"). public/js/shell.js — the top-right account menu item
+    ("Set approver name" / the saved name) opens a small "Approver name" dialog (Save/Cancel, Enter
+    saves) instead of jumping to the removed Settings field. Same saved value as Upload → Approver;
+    approvals still ask for the name when it's missing.
+  - Verification: meetingsHeaderUi test updated (dialog sets the name → top-bar initials "MA";
+    Settings has no name field); full suite 624 passed (1 skipped); `node --check` passes.
+
+- [x] Settings: "People" card removed; phones get a People tab in the bottom bar
+  - Date: 2026-10-09
+  - Session: CC-20261004-k7q2
+  - What changed: public/js/screens/settings.js — "People / Manage people" card removed (it only linked
+    to the People page). Because that card was the phone's only route to People, public/js/shell.js
+    adds a "People" tab to the bottom bar (Meetings, Action items, Record, People, Settings; Settings
+    no longer highlights on People) and public/styles/mobile.css lays the bar out in 5 columns.
+  - Verification: mobileUi test updated (5 tabs, People tab opens People and is marked current);
+    full suite 624 passed (1 skipped); 390px screenshot shows the bar on one row.
+
+- [x] New meeting menu: "Upload file" renamed to "Upload recording"
+  - Date: 2026-10-09
+  - Session: CC-20261004-k7q2
+  - What changed: public/js/screens/meetings.js — first item of the New meeting ▾ menu now reads
+    "Upload recording" (sentence case, like "Record in person"); same action (opens Upload meeting).
+  - Verification: meetingsHeaderUi test updated; full suite 624 passed (1 skipped).
+
+- [x] Email step: status shown once; "Decisions" removed from participant emails
+  - Date: 2026-10-09
+  - Session: CC-20261004-k7q2
+  - What changed: public/js/screens/send.js — the "Sent / Not sent" badge on the email preview header
+    removed (each person's status shows once, in the recipient list). emailDraftingService.ts and
+    minutesAmendments.ts (updated-minutes email) — the "Decisions:" section is no longer written into
+    participant emails; emails keep discussion topics and the person's own action items. Decisions
+    stay in the minutes and the Decisions review step. Emails already drafted or sent keep the text
+    they were approved with.
+  - Verification: new emailDraftingService test (topics + own items, no Decisions section); full
+    suite 625 passed (1 skipped); `tsc --noEmit` passes; app restarted on localhost:3000.
+
+- [x] Review: "Decisions" removed from the screens — the step is now "Action items"
+  - Date: 2026-10-09
+  - Session: CC-20261004-k7q2
+  - What changed: step bar "Decisions" → "Action items" (workflow.js; same step id, so saved progress
+    and links keep working); that step shows only the action items editor ("Edit action items"),
+    decision sections are no longer drawn (screens/review.js); "Decisions — N recorded" row removed
+    from the Approval checklist (review/steps.js); "Decisions" removed from the Summary's "Add section"
+    menu (sectionsEditor.js); decisions dropped from the spelling check (app.js); processing text and a
+    recording-marker example no longer mention decisions. Data unchanged: decisions the AI extracted
+    are still stored with the minutes, just not shown or emailed.
+  - Verification: reviewWorkflowUi / meetingAssistantUi / spellcheckUi / minutesEditorUi updated for the
+    new step; full suite 625 passed (1 skipped); localhost:3000 screenshot of the Action items step
+    (no "decision" text on the page).
+
+- [x] Review: "Action items" step removed (Meeting → Transcript → Summary → Approval → Email)
+  - Date: 2026-10-09
+  - Session: CC-20261004-k7q2
+  - What changed: review/workflow.js — the action-items step is gone from the step bar; Approval opens
+    after Transcript and Summary have been reviewed. review/steps.js — "Action items" row removed from
+    the Approval checklist. app.js / review/minutesStore.js — the spelling check before approval looks
+    only at what's visible (summary sections), and "Review" always opens the Summary. Action items are
+    still extracted, stored, emailed ("Your action items"), and listed on the Action items page /
+    dashboard / People history; only the review step is gone. actionItemsEditor.js is kept (unused).
+  - Verification: reviewWorkflowUi / meetingAssistantUi updated for 5 steps; spellcheckUi "Add to
+    dictionary" test moved to the Summary editor; minutesEditorUi action-items-editor test removed
+    (UI no longer reachable); full suite 624 passed (1 skipped); `tsc --noEmit` passes; localhost
+    step bar shows Meeting · Transcript · Summary · Approval · Email.
+
+- [x] Summary: edit log with the original kept; every Edit session saves a new version; "Approval" step → "Review"
+  - Date: 2026-10-09
+  - Session: CC-20261004-k7q2
+  - What changed: minutesDocService.ts / routes/minutes.ts — PUT /api/minutes/:runId accepts optional
+    `newVersion` (Zod boolean); when set the save never folds into the previous version (previously
+    same-person edits within 5 min merged, which could overwrite e.g. the approved text in the
+    history). review/minutesStore.js + workflow.js — choosing Edit starts a session whose first save
+    sends newVersion; later autosaves in that session fold into it. screens/review.js + workflow.css —
+    new "Edit log" card on the Summary step: original AI draft and every saved version (who, when,
+    version number, reason) with "Compare with original". workflow.js / steps.js — the "Approval" step
+    and its card are now labelled "Review" (the "Approve minutes" button is unchanged).
+  - Verification: new minutes.test (original kept; two sessions → two versions; bad newVersion → 400)
+    and editLogUi.integration.test (log shows original, two Edit → Save sessions → 3 entries, step bar
+    labels); reviewWorkflowUi label updated; full suite 626 passed (1 skipped); `tsc --noEmit` passes;
+    localhost:3000 screenshot of the Summary edit log.
+  - Notes: Versions saved before this change stay as they were (earlier quick edits had been merged).
+
+- [x] Wording: "approved" → "reviewed" everywhere the app shows it
+  - Date: 2026-10-09
+  - Session: CC-20261004-k7q2
+  - What changed: 67 user-visible strings reworded ("Approved" tab → "Reviewed", "Reviewed by / Reviewed
+    at", "Minutes reviewed and emailed", "Edit reviewed minutes", toasts, help text, Recent activity
+    lines, and server messages shown on the page) across public/js and the routes/services that return
+    page text. Done with the TypeScript parser over string literals only, so status values, property
+    names and saved data ('approved', approvedAt, minutes_approved…) are unchanged. Not changed: the AI
+    drafting prompt, internal gate/drafting error messages, the cleanup script output, and the words
+    "approve"/"approval" (e.g. "Approve minutes", "Human approval enabled").
+  - Verification: affected test expectations reworded (41 strings + 4 regex checks); full suite 626
+    passed (1 skipped); `tsc --noEmit` and `node --check` pass; live scan of dashboard, Summary, Review
+    and Email pages finds no "approved" text.
+
+- [x] Email step: send the reviewed minutes to more people after they were emailed
+  - Date: 2026-10-09
+  - Session: CC-20261004-k7q2
+  - What changed: reviewActions.addRecipient — a sent meeting accepts new recipients and addresses for
+    people who weren't emailed; refuses to change the address of someone who already received it, and
+    refuses an address that already received this meeting's email under another name.
+    meetingPipelineService — approveEmailsAndSend with chosen recipients on a fully sent meeting
+    (action items recorded) goes through sendEarlierDraft(alreadySent): emails only people not yet sent
+    (sent-email log + idempotency key, one in-flight send per meeting), keeps the original review
+    (who/when), adds them to the selection; a send that failed part-way still resumes the normal way.
+    Page: Email step of a sent meeting shows "Add" on Recipients, "Add email" for people without one,
+    and a "Missed someone? … Send to N more" bar; the send dialog marks people who have it as "Already
+    sent" (not tickable); toast "Minutes sent to N more participants". Also: approve toast no longer
+    points to the removed Settings name field.
+  - Verification: new sendMoreUi.integration.test (add missed people → Send to 2 more → only they are
+    emailed, review not re-dated, duplicate address refused, re-asking for a sent person sends
+    nothing); sendDialogUi updated (adding after sending now allowed; sent address locked); full suite
+    627 passed (1 skipped); `tsc --noEmit` passes; localhost Weekly Meeting shows the bar.
+
+- [x] Dashboard: action items removed (card, column, navigation, search)
+  - Date: 2026-10-09
+  - Session: CC-20261004-k7q2
+  - What changed: dashboard/stats.js — "Open action items" card removed (two cards now; screens.css grid
+    2 columns); dashboard/table.js — "Action items" column and the phone card's "N action items" line
+    removed; shell.js — "Action items" link removed from the sidebar, the phone bottom bar (Meetings ·
+    Record · People · Settings; mobile.css 4 columns) and the "Go to action items" search command;
+    core/search.js — the Action items results group is left out; search placeholder/labels now
+    "Search meetings and transcripts". Not removed: the Action items page itself (no link to it), the
+    "Your action items" section of participant emails, and People history counts.
+  - Verification: dashboardUi / mobileUi / meetingAssistantUi / recordingUi / meetingsHeaderUi /
+    searchUi updated; full suite 627 passed (1 skipped); localhost dashboard (desktop dark + 390px)
+    shows no action items.
+
+- [x] Action items: kept on the server, hidden everywhere in the app (emails, People, version history, old page)
+  - Date: 2026-10-09
+  - Session: CC-20261004-k7q2
+  - What changed: Still extracted, stored, and recorded by the tracker (GET /api/meetings/action-items/all
+    unchanged; each drafted email keeps the person's own `actionItems`). Not shown any more:
+    emailDraftingService / minutesAmendments — the "Your action items" section is gone from participant
+    emails and updated-minutes emails, subject is now "Meeting recap: <title>"; screens/people.js —
+    history shows meetings only; review/versions.js — compare/preview show summary sections only;
+    screens/send.js — no "Action items N recorded" fact and no "action items aren't in any email"
+    warning; settings.js — no "Action item tracker" row, retention note reworded; processing, help,
+    search hint and delete-confirmation texts reworded; app.js — the Action items page is retired (an old
+    ?page=action-items link opens Meetings). Emails already sent keep the text they were sent with.
+  - Verification: emailDrafting, meetingQueriesAndEdits, meetingAssistantUi, reviewWorkflowUi,
+    peopleDirectoryUi tests updated (items kept on the email object, not in the text; no "action item"
+    wording on People); full suite 627 passed (1 skipped); `tsc --noEmit` passes; live check: old link →
+    Meetings, People / Settings / Email step show no action items, the API still returns them.
+
+- [x] New meeting menu wording: "Upload Recording", "Record In Person Meeting", "Record Online Meeting"
+  - Date: 2026-10-10
+  - Session: CC-20261004-k7q2
+  - What changed: public/js/screens/meetings.js — New meeting ▾ items renamed as requested;
+    public/js/shell.js — the phone's Record menu uses the same two record labels. Same actions as before.
+  - Verification: meetingsHeaderUi and mobileUi label checks updated; full suite 627 passed (1 skipped).
+
+- [x] Summary step: recording + transcript + summary (read-only); editing moved to the Review step; uploaded audio kept
+  - Date: 2026-10-10
+  - Session: CC-20261004-k7q2
+  - What changed: New services/meetingAudio/meetingAudioStore.ts — keeps an uploaded meeting's audio in
+    data/meeting-audio/<sha256(runId)>.<ext> (playable types only; idempotent; removed when the meeting
+    is deleted; follows the "Keep raw meeting audio" setting via applyRetention). recordingService
+    .audioFor(runId) exposes an in-app recording's audio. GET /api/meetings/:runId/audio serves either
+    (Content-Type from the file, private no-store; 404 "No audio is kept for this meeting."). Page:
+    Summary step shows a "Recording" player, the summary with no Edit buttons, the transcript (read-only)
+    and the edit log; the Review step shows the review card first, then the summary with "Edit Summary"
+    and per-section Edit (same edit/cancel/save + reopen flow, own heading id); the Review card's extra
+    "Edit" button removed (duplicate); spelling "Review" now opens the editor on the Review step; banner
+    text points to "Edit Summary on the Review step".
+  - Verification: new meetingAudio.test (upload kept + served, hashed name, single copy, 404, delete
+    removes, retention after review / keep, playable types only); reviewWorkflowUi / minutesEditorUi /
+    spellcheckUi / meetingAssistantUi / editLogUi updated (shared goToStep helper edits the summary on
+    Review); full suite 631 passed (1 skipped); `tsc --noEmit` passes; localhost: Weekly Meeting audio
+    200 audio/webm, Summary shows player + transcript + log with no Edit, Review shows "Edit Summary".
+  - Notes: Meetings uploaded before today have no kept audio (the player says so).
+
+- [x] People ↔ meetings: a name corrected on People reaches meetings not yet emailed to that person
+  - Date: 2026-10-12
+  - Session: CC-20261004-k7q2
+  - What changed: New services/meetingPipeline/personSync.ts (renamePerson by email): minutes still in
+    review → participant renamed everywhere (via updateParticipants); email drafted but not sent to them →
+    recipient name + "Hi …" greeting renamed (email-gate revision when pending; record + gate when
+    reviewed); sent emails and reviewed attendee lists untouched; skips if another participant already has
+    that name; idempotent. routes/people.ts — PUT returns `syncedMeetings` and calls onNameChanged when the
+    display name changed; server.ts wires it to pipeline.renamePerson; app.js toast "Saved X — also updated
+    in N meeting(s) not yet emailed".
+  - Verification: new personSync.test (in-review draft renamed, drafted email + greeting renamed, sent
+    meeting unchanged, renamed person receives "Hi Sara Lee,", repeat save → 0); full suite 667 passed
+    (1 skipped; includes another session's new governance tests); `tsc --noEmit` passes; before/after
+    screenshots on a demo server (port 3123, in-memory, no real email).
+
+- [x] Wording: "Approver" → "Reviewer" (Upload field and the account menu)
+  - Date: 2026-10-12
+  - Session: CC-20261004-k7q2
+  - What changed: public/js/screens/upload.js — field "Reviewer" (placeholder "Name of the person reviewing
+    the minutes"; hint "…the reviewer"); shell.js — account menu "Set reviewer name", dialog "Reviewer
+    name", toasts; app.js — the missing-name toast. Same saved value (form.reviewer); no behavior change.
+  - Verification: meetingAssistantUi and meetingsHeaderUi wording checks updated; full suite 667 passed
+    (1 skipped).
+
+- [x] Add recipients: type a name from People (e.g. "sara") and pick them — their email is filled in
+  - Date: 2026-10-12
+  - Session: CC-20261004-k7q2
+  - What changed: public/js/screens/send.js — each "Add recipients" box takes a name or an email; typing
+    shows matching people from People (name, email, role; arrow keys / Enter / Esc; people already on the
+    email aren't suggested); picking fills the address and sends the person's name (greeting "Hi Sara,");
+    a typed full name matching exactly one person is resolved on Add; the People list is refreshed when
+    the dialog opens. workflow.css — suggestions shown inside the dialog (not clipped).
+  - Verification: new sendMoreUi test ("sar" → Sara Abate suggested with role; pick → address; typed
+    "dana cruz" resolved; both added with names); sendDialogUi wording updated; full suite 668 passed
+    (1 skipped); live screenshot on localhost: typing "sar" suggests Sara · mmilabate@gmail.com · Business
+    Analyst (nothing submitted).
+
+- [x] Dashboard login (one account, email + password)
+  - Date: 2026-10-12
+  - Session: CC-20261004-k7q2
+  - What changed: New services/auth/authService.ts (scrypt password hash with per-password salt; random
+    session tokens stored only as SHA-256; 7-day sessions refreshed hourly while used; timing-equal checks)
+    and routes/auth.ts (GET /api/auth/status, POST /setup — first run only and only from this computer
+    (loopback), POST /login — generic "Email or password is incorrect", 5 failures per 15 min per address
+    → 429, POST /logout; cookie ma_session HttpOnly + SameSite=Lax + Secure on https; requireAuth guard:
+    pages → /login?next=…, API → 401 AuthRequired; open: /login, /api/auth/*, /health, the signed notetaker
+    webhook, styles/fonts). public/login.html ("Create your login" first time, then "Sign in"; next= limited
+    to same-site paths). server.ts — auth stored in data/auth.json + data/sessions.json (git-ignored), off
+    in demo/tests; api.js sends a signed-out page to /login; account menu "Sign out". scripts/resetLogin.ts
+    + `npm run auth:reset -- --yes` (refuses while the app runs) for a forgotten password.
+  - Verification: new auth.test (guarded pages/API, open paths, one-time setup, hash-only storage, cookie
+    flags, sign in/out, generic errors, 429, 7-day expiry, loopback check); meetingsHeaderUi menu updated;
+    full suite 674 passed (1 skipped); `tsc --noEmit` passes; localhost: / → 302 /login, /api/meetings →
+    401, "Create your login" page shown (account not created — left for the user).
+  - Notes: Security change requested by the user (single-owner login); no new dependencies.
+
+- [x] Change password (account menu)
+  - Date: 2026-10-12
+  - Session: CC-20261004-k7q2
+  - What changed: authService.changePassword (checks the current password, ≥10 characters, must differ,
+    re-hashes, ends every session, returns a fresh one); POST /api/auth/password (signed in only; wrong
+    current password counts toward the 5-per-15-min limit; sets the new session cookie); shell.js —
+    "Change password" dialog (current / new / repeat) and "Sign out" shown only when signed in (hidden when
+    login is off, e.g. demo/tests).
+  - Verification: new auth.test case (needs sign-in, wrong current → 401, length/same checks, other
+    browser signed out, old password rejected, new one works); meetingsHeaderUi menu expectation back to
+    the no-login labels; full suite 675 passed (1 skipped); `tsc --noEmit` passes; live: unauthenticated
+    POST /api/auth/password → 401.
+
+- [x] Login: minimum password length 6 (was 10), at the user's request
+  - Date: 2026-10-12
+  - Session: CC-20261004-k7q2
+  - What changed: authService MIN_PASSWORD = 6 (create login and change password); shell.js change-password
+    dialog label/check "at least 6 characters". Rate limit (5 wrong tries per 15 min) unchanged.
+  - Verification: new auth.test boundary case (5 refused, 6 accepted); change-password message updated;
+    full suite 676 passed (1 skipped); `tsc --noEmit` passes; app restarted.
+
+- [x] Settings → Appearance: System vs Light/Dark difference made visible
+  - Date: 2026-10-13
+  - Session: CC-20261004-k7q2
+  - What changed: public/js/screens/settings.js — the System option reads "System · Light now" / "System ·
+    Dark now" (what the computer is set to), and a note under the choices changes with the selection:
+    System "Follows your computer. It's set to light right now, so System looks the same as Light — it
+    changes by itself when your computer switches."; Light/Dark "Always light/dark, whatever your computer
+    is set to." Label and note update live when the computer switches (matchMedia listener). All three
+    options kept. screens.css — note spacing.
+  - Verification: demo-server screenshots clicking System / Light / Dark (label + note change each time);
+    full suite 676 passed (1 skipped).
+
+- [x] Appearance: "System" label plain again; Light now looks visibly different from System
+  - Date: 2026-10-13
+  - Session: CC-20261004-k7q2
+  - What changed: settings.js — option reads "System" (no "· Light now"); notes: System "Follows your
+    computer (light right now): soft grey when it's light, dark when it's dark. It switches by itself.",
+    Light "Always bright and white…". tokens.css — default light palette (used by System on a light
+    computer) is a clearer soft grey (bg #f3f4f6, sidebar/subtle #eceef1, hover #e7e9ed); new
+    :root[data-theme="light"] "bright" palette (white page and sidebar, stronger borders/text).
+    screens.css — tinted segmented track in Light so the selected option still stands out.
+  - Verification: demo-server screenshots (System: grey page + sidebar; Light: white page + sidebar;
+    Dark unchanged); full suite 676 passed (1 skipped).
+  - Notes: Muted/subtle text stays ≥ 4.5:1 on the new grey surfaces.
+
+- [x] Dashboard: "vs last week" line removed from the Meetings card
+  - Date: 2026-10-13
+  - Session: CC-20261004-k7q2
+  - What changed: public/js/dashboard/stats.js — the Meetings card shows only the count for the chosen
+    period (This week / This month / All time); the "+N / −N vs last week" / "Same as last week" line and
+    its helper are removed. Counting itself is unchanged.
+  - Verification: dashboardUi asserts no comparison line for This week (and All time); full suite 676
+    passed (1 skipped).

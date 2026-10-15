@@ -78,19 +78,31 @@ describe('draftEmails', () => {
     const priyaEmail = batch.emails.find((e) => e.participantName === 'Priya');
     const marcusEmail = batch.emails.find((e) => e.participantName === 'Marcus');
 
+    // Each person's own items are kept with their email (for the tracker), but not written into the text.
     expect(priyaEmail?.actionItems.map((i) => i.task)).toEqual(['Send the proposal']);
-    expect(priyaEmail?.body).toContain('Send the proposal');
-    expect(priyaEmail?.body).not.toContain('Review the budget');
-
     expect(marcusEmail?.actionItems.map((i) => i.task)).toEqual(['Review the budget']);
-    expect(marcusEmail?.body).toContain('Review the budget');
-    expect(marcusEmail?.body).not.toContain('Send the proposal');
+    for (const body of [priyaEmail?.body, marcusEmail?.body]) {
+      expect(body).not.toContain('Send the proposal');
+      expect(body).not.toContain('Review the budget');
+    }
 
     expect(batch.unmatchedActionItems).toEqual([]);
     expect(batch.flaggedForReview).toBe(false);
   });
 
-  it('acceptance criterion: a participant with no action items gets the exact required sentence', () => {
+  it('the email has the discussion topics, but no Decisions or action items section', () => {
+    const draft = draftMinutes('t-no-decisions', { actionItems: [actionItem({ task: 'Send the proposal', owner: 'Priya' })] });
+    const batch = draftEmails({ reviewGateSessionId: 't-no-decisions' }, { reviewGateOptions: { sessionStore: approvedSession(draft) } });
+    const body = batch.emails.find((e) => e.participantName === 'Priya')!.body;
+    expect(body).toContain('Discussion topics:');
+    expect(body).toContain('Q4 scope: Agreed on scope');
+    expect(body).not.toContain('Your action items:');
+    expect(body).not.toContain('Decisions:');
+    expect(batch.emails[0].subject).toBe('Meeting recap: Roadmap Sync');
+    expect(body).not.toContain('Ship the v2 API by Q4'); // the decision itself stays in the minutes in the app
+  });
+
+  it('a participant with no action items gets the same email, with no action-items wording at all', () => {
     const draft = draftMinutes('t-none', { actionItems: [actionItem({ owner: 'Priya' })] });
     const sessionStore = approvedSession(draft);
 
@@ -98,7 +110,7 @@ describe('draftEmails', () => {
 
     const marcusEmail = batch.emails.find((e) => e.participantName === 'Marcus');
     expect(marcusEmail?.actionItems).toEqual([]);
-    expect(marcusEmail?.body).toContain('No action items assigned to you from this meeting.');
+    expect(marcusEmail?.body).not.toMatch(/action item/i);
   });
 
   it('incorrect email personalization: an action item whose owner matches no attendee is surfaced, not silently dropped or misattached', () => {

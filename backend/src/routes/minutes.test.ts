@@ -39,6 +39,28 @@ describe('/api/minutes', () => {
     expect((await request(app).get('/api/minutes/nope')).status).toBe(404);
   });
 
+  it('the original is kept, and each Edit session (newVersion) saves a new version instead of overwriting the last one', async () => {
+    const { app, runId } = await setup();
+    const doc = (await request(app).get(`/api/minutes/${runId}`)).body;
+    const original = doc.content.sections[0].html;
+    const put = (html: string, baseRevision: number, newVersion?: boolean) => {
+      const content = { ...doc.content, sections: [{ ...doc.content.sections[0], html }, ...doc.content.sections.slice(1)] };
+      return request(app).put(`/api/minutes/${runId}`).send({ content, baseRevision, editedBy: 'Sara Lee', ...(newVersion ? { newVersion } : {}) });
+    };
+    // Session 1: first save starts a version; the autosaves after it fold into it.
+    expect((await put('<p>First edit</p>', 1, true)).status).toBe(200);
+    expect((await put('<p>First edit, more</p>', 2)).status).toBe(200);
+    // Session 2, a minute later by the same person: a new version — session 1's text stays in the history.
+    expect((await put('<p>Second edit</p>', 3, true)).status).toBe(200);
+    const versions = (await request(app).get(`/api/minutes/${runId}/versions`)).body.versions as Array<{ number: number; kind: string }>;
+    expect(versions.map((v) => v.kind)).toEqual(['edit', 'edit', 'ai_draft']);
+    const html = async (n: number) => (await request(app).get(`/api/minutes/${runId}/versions/${n}`)).body.content.sections[0].html;
+    expect(await html(1)).toBe(original); // the original AI draft, untouched
+    expect(await html(2)).toBe('<p>First edit, more</p>');
+    expect(await html(3)).toBe('<p>Second edit</p>');
+    expect((await request(app).put(`/api/minutes/${runId}`).send({ content: doc.content, baseRevision: 4, editedBy: 'Sara Lee', newVersion: 'yes' })).status).toBe(400);
+  });
+
   it('AI help returns a suggestion only (nothing saved); unavailable without a provider; failures are explained', async () => {
     const { app, runId } = await setup();
     const doc = (await request(app).get(`/api/minutes/${runId}`)).body;

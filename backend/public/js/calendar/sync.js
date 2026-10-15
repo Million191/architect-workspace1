@@ -5,6 +5,8 @@
   var ui = MA.ui, el = ui.el, append = ui.append;
   var AUTO_MS = 15 * 60 * 1000;
   var NAME = { google: 'Google Calendar', microsoft: 'Outlook' };
+  var CARD = { google: 'Google Calendar', microsoft: 'Outlook Calendar' };
+  var CONNECT = { google: 'Connect Google Calendar', microsoft: 'Connect Outlook' };
   var SHORT = { google: 'Google', microsoft: 'Outlook' };
 
   /** "just now", "5 min ago", "2 h ago", or a date. */
@@ -67,7 +69,18 @@
     // Back from the provider's sign-in page: say what happened, then tidy the address bar.
     var params = new URL(window.location.href).searchParams;
     if (params.get('calendarConnected')) setTimeout(function () { ui.toast((NAME[params.get('calendarConnected')] || 'Calendar') + ' connected and synced'); }, 300);
-    if (params.get('calendarError')) setTimeout(function () { ui.toast(params.get('calendarError'), 'error'); }, 300);
+    if (params.get('calendarError')) {
+      store.quiet({ calendarSync: Object.assign({}, store.get().calendarSync, { connectError: { provider: params.get('calendarProvider'), message: params.get('calendarError') } }) });
+      setTimeout(function () { ui.toast(params.get('calendarError'), 'error'); }, 300);
+    }
+    // Tidy the address bar: these one-time notes shouldn't come back on refresh.
+    try {
+      if (params.get('calendarError') || params.get('calendarConnected')) {
+        var clean = new URL(window.location.href);
+        ['calendarError', 'calendarConnected', 'calendarProvider'].forEach(function (k) { clean.searchParams.delete(k); });
+        window.history.replaceState(null, '', clean.toString());
+      }
+    } catch (e) { /* convenience only */ }
 
     // Load status; sync on open when the last sync is older than 15 minutes, then every 15 minutes.
     actions.calSyncLoad().then(function (status) {
@@ -78,19 +91,35 @@
     setInterval(function () { if (connections(store.get()).length) actions.calSyncNow(true); }, AUTO_MS);
   };
 
-  /** Settings → Integrations: one card per provider. */
+  /**
+   * Settings → Integrations: one card per calendar. Plain words only — setup details (env variables,
+   * keys, client ids) stay in the server logs and the developer docs, never on this page.
+   */
   MA.cal.integrations = function (s, actions) {
     var cs = s.calendarSync || {}, box = el('div', null, 'integrations');
-    if (cs.unavailable) { box.appendChild(el('p', 'Calendar sync isn’t available on this server.', 'help')); return box; }
+    if (cs.unavailable) { box.appendChild(ui.callout('info', 'calendar', 'Calendar integration isn’t available right now.', 'Try again later.')); return box; }
     if (!cs.status) { box.appendChild(el('span', null, 'skeleton skeleton-line', { style: 'width:60%' })); return box; }
-    if (!cs.status.encryption) box.appendChild(ui.callout('warning', 'triangle-alert', 'Set up needed on the server.', cs.status.encryptionProblem + ' See docs/CALENDAR_SYNC_SETUP.md.'));
-    cs.status.providers.forEach(function (p) {
-      var c = p.connection, card = el('div', null, 'integration', { 'aria-labelledby': 'int-' + p.provider });
-      var head = append(el('div', null, 'integration-head'), append(el('div'), el('strong', p.label, null, { id: 'int-' + p.provider }),
-        el('span', c ? 'Connected as ' + c.accountEmail + ' · Last synced ' + ago(c.lastSyncedAt) : p.configured ? 'Read-only access to events. Imports the next 4 weeks.' : 'Not set up on this server yet — an admin adds its client id and secret (docs/CALENDAR_SYNC_SETUP.md).', 'help')));
+    var failed = cs.connectError;
+    if (failed && failed.message) {
+      box.appendChild(ui.callout('danger', 'circle-alert', 'Connection failed.', append(el('span'), failed.message + ' ',
+        failed.provider && CONNECT[failed.provider] ? ui.button('Try again', 'secondary', function () { actions.calConnect(failed.provider); }, { size: 'sm', id: 'connectRetry' }) : null)));
+    }
+    if (!cs.status.available) box.appendChild(ui.callout('info', 'calendar', 'Calendar integration isn’t available yet.', 'It needs administrator setup. Once it’s set up, you can connect your calendar here in one click.'));
+    // Outlook is shown only once it's set up on the server (or already connected); Google always shows.
+    cs.status.providers.filter(function (p) { return p.provider !== 'microsoft' || p.configured || p.connection; }).forEach(function (p) {
+      var c = p.connection, card = el('div', null, 'integration' + (c ? ' is-connected' : ''), { 'aria-labelledby': 'int-' + p.provider });
+      var title = el('strong', CARD[p.provider] || p.label, null, { id: 'int-' + p.provider });
+      var about = c
+        ? append(el('div', null, 'integration-status'), append(el('span', null, 'integration-ok'), MA.icon('circle-check'), el('span', (CARD[p.provider] || p.label) + ' connected')),
+          el('span', c.accountEmail, 'integration-account'), el('span', 'Last synced ' + ago(c.lastSyncedAt), 'help'))
+        : el('span', 'Automatically import upcoming meetings and participants.', 'help');
+      var head = append(el('div', null, 'integration-head'), append(el('div', null, 'integration-text'), title, about));
       if (!c) {
-        head.appendChild(ui.button('Connect', 'primary', function () { actions.calConnect(p.provider); }, { icon: 'calendar', disabled: !p.configured, id: 'connect-' + p.provider }));
+        var connect = ui.button(CONNECT[p.provider] || 'Connect', 'primary', function () { actions.calConnect(p.provider); }, { icon: 'calendar', disabled: !p.configured, id: 'connect-' + p.provider });
+        if (!p.configured) connect.title = 'Not available yet — needs administrator setup';
+        head.appendChild(connect);
         card.appendChild(head);
+        if (p.configured) card.appendChild(el('p', 'Read-only: Meeting Assistant never changes or deletes your calendar events.', 'help integration-note'));
         box.appendChild(card);
         return;
       }
@@ -98,8 +127,12 @@
         ui.button(cs.syncing ? 'Syncing…' : 'Sync now', 'secondary', function () { actions.calSyncNow(false); }, { icon: 'refresh-cw', size: 'sm', disabled: cs.syncing, id: 'syncNow-' + p.provider }),
         ui.button('Disconnect', 'danger', function () { actions.calDisconnect(p.provider); }, { size: 'sm', id: 'disconnect-' + p.provider })));
       card.appendChild(head);
-      if (c.lastError) card.appendChild(ui.callout('danger', 'circle-alert', c.lastError.needsReconnect ? 'Reconnect needed.' : 'Last sync failed.', c.lastError.message));
-      if (c.lastError && c.lastError.needsReconnect) card.appendChild(ui.button('Reconnect', 'primary', function () { actions.calConnect(p.provider); }, { size: 'sm' }));
+      if (c.lastError) {
+        var reconnect = c.lastError.needsReconnect;
+        card.appendChild(ui.callout(reconnect ? 'warning' : 'danger', 'circle-alert', reconnect ? 'Authorization expired.' : 'Calendar sync failed.', append(el('span'), c.lastError.message + ' ',
+          reconnect ? ui.button('Reconnect', 'primary', function () { actions.calConnect(p.provider); }, { size: 'sm', id: 'reconnect-' + p.provider })
+            : ui.button('Try again', 'secondary', function () { actions.calSyncNow(false); }, { size: 'sm', id: 'syncRetry-' + p.provider }))));
+      }
       var cals = append(el('fieldset', null, 'integration-cals'), el('legend', 'Calendars to sync', 'label'));
       c.calendars.forEach(function (cal) {
         var id = 'cal-' + p.provider + '-' + cal.id.replace(/[^a-z0-9]/gi, '').slice(0, 40);
@@ -117,7 +150,7 @@
       solo.addEventListener('change', function () { actions.calSaveSyncSettings(p.provider, { options: { skipSolo: solo.checked } }); });
       var filters = append(el('fieldset', null, 'integration-cals'), el('legend', 'Skip', 'label'),
         append(el('label', null, 'integration-option', { for: 'solo-' + p.provider }), solo, 'Events with no one else invited'),
-        el('p', 'All-day events (holidays, out of office) are always skipped. Changes and cancellations in your calendar appear here on the next sync — every 15 minutes while the app is open.', 'help'));
+        el('p', 'Imports the next 4 weeks as upcoming meetings — read-only, nothing in your calendar is changed. All-day events are skipped. Changes and cancellations appear on the next sync (every 15 minutes while the app is open).', 'help'));
       card.appendChild(append(el('div', null, 'integration-body'), cals, filters));
       box.appendChild(card);
     });

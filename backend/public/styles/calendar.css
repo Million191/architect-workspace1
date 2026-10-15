@@ -52,6 +52,7 @@
 .is-upcoming, .is-postponed { background: var(--color-accent-subtle); border-color: color-mix(in srgb, var(--color-accent) 30%, transparent); border-left-color: var(--color-accent); }
 .is-needs_review { background: var(--color-warning-subtle); border-color: color-mix(in srgb, var(--color-warning) 30%, transparent); border-left-color: var(--color-warning); }
 .is-emails_drafted { background: var(--color-accent-subtle); border-color: color-mix(in srgb, var(--color-accent) 30%, transparent); border-left-color: var(--color-accent); }
+.is-in_progress { background: var(--color-progress-subtle); border-color: color-mix(in srgb, var(--color-progress) 30%, transparent); border-left-color: var(--color-progress); }
 .is-approved, .is-sent { background: var(--color-success-subtle); border-color: color-mix(in srgb, var(--color-success) 30%, transparent); border-left-color: var(--color-success); }
 .is-cancelled { background: var(--color-neutral-subtle); border-color: var(--color-border); border-left-color: var(--color-text-subtle); }
 .is-cancelled .cal-block-title { text-decoration: line-through; color: var(--color-text-muted); }
@@ -141,3 +142,11 @@
   .integration-actions { width: 100%; }
   .integration-actions .btn { flex: 1; }
 }
+
+/* Settings → Integrations: connected state */
+.integration-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.integration-status { display: flex; flex-direction: column; gap: 2px; }
+.integration-ok { display: inline-flex; align-items: center; gap: 6px; color: var(--color-success); font-weight: var(--weight-medium); }
+.integration-ok .icon { width: 16px; height: 16px; }
+.integration-account { overflow-wrap: anywhere; }
+.integration-note { margin: var(--space-1) 0 0; }

@@ -7,9 +7,11 @@ import { AssistError, MinutesAssistant } from '../services/minutesDoc/assistant'
 import { MeetingPipeline } from '../services/meetingPipeline/meetingPipelineService';
 
 const by = z.string().trim().min(1, 'Add your name in Settings first — it’s recorded on every edit.').max(200);
-const saveSchema = z.object({ content: z.object({ sections: z.array(z.unknown()).max(100), actionItems: z.array(z.unknown()).max(300) }), baseRevision: z.number().int().min(1), editedBy: by }).strict();
+// newVersion: the first save of an Edit session starts a new version instead of folding into the last one.
+const saveSchema = z.object({ content: z.object({ sections: z.array(z.unknown()).max(100), actionItems: z.array(z.unknown()).max(300) }), baseRevision: z.number().int().min(1), editedBy: by, newVersion: z.boolean().optional() }).strict();
 const restoreSchema = z.object({ baseRevision: z.number().int().min(1), editedBy: by }).strict();
-const amendSchema = z.object({ reason: z.string().trim().min(3, 'Say briefly why the approved minutes are being changed.').max(500), editedBy: by }).strict();
+const amendSchema = z.object({ reason: z.string().trim().min(3, 'Say briefly why the reviewed minutes are being changed.').max(500), editedBy: by }).strict();
+const reopenSchema = z.object({ editedBy: by }).strict();
 const sendSchema = z.object({ sentBy: by }).strict();
 const assistSchema = z.object({ mode: z.enum(['regenerate', 'shorter', 'formal']), title: z.string().max(200).default(''), html: z.string().max(60000).default(''), startMs: z.number().int().min(0).optional(), endMs: z.number().int().min(0).optional() }).strict();
 const transcriptSchema = z.object({
@@ -20,7 +22,7 @@ const transcriptSchema = z.object({
 const presenceSchema = z.object({ viewerId: z.string().regex(/^[A-Za-z0-9-]{8,64}$/), name: z.string().trim().max(200).default('') }).strict();
 const PRESENCE_TTL_MS = 45000;
 
-const STATUS: Record<string, number> = { AssistUnavailable: 503, AssistFailed: 502, ModelRefused: 422, MinutesConflict: 409, MinutesLocked: 409, MinutesValidationError: 400, VersionNotFound: 404, RunNotFoundError: 404, StageOrderError: 409 };
+const STATUS: Record<string, number> = { AssistUnavailable: 503, AssistFailed: 502, ModelRefused: 422, MinutesConflict: 409, MinutesLocked: 409, MinutesValidationError: 400, VersionNotFound: 404, RunNotFoundError: 404, StageOrderError: 409, UniqueConstraintError: 409 };
 
 function fail(res: Response, error: unknown): void {
   if (error instanceof MinutesError) { res.status(STATUS[error.errorClass]).json({ error: error.errorClass, message: error.message, ...error.details }); return; }
@@ -50,7 +52,7 @@ export function createMinutesRouter(deps: { minutes?: MinutesDocService; assista
   router.put('/:runId', (req, res) => {
     const b = parse(saveSchema, req, res);
     if (!b) return;
-    try { res.json(svc().save(req.params.runId, b.content as unknown as MinutesContent, b.baseRevision, b.editedBy)); } catch (e) { fail(res, e); }
+    try { res.json(svc().save(req.params.runId, b.content as unknown as MinutesContent, b.baseRevision, b.editedBy, { newVersion: b.newVersion })); } catch (e) { fail(res, e); }
   });
 
   router.get('/:runId/versions', (req, res) => { try { res.json({ versions: svc().versions(req.params.runId) }); } catch (e) { fail(res, e); } });
@@ -59,6 +61,13 @@ export function createMinutesRouter(deps: { minutes?: MinutesDocService; assista
     const b = parse(restoreSchema, req, res);
     if (!b) return;
     try { res.json(svc().restore(req.params.runId, Number(req.params.n), b.baseRevision, b.editedBy)); } catch (e) { fail(res, e); }
+  });
+
+  // Editing approved minutes withdraws the approval (Needs review again).
+  router.post('/:runId/reopen', (req, res) => {
+    const b = parse(reopenSchema, req, res);
+    if (!b) return;
+    try { res.json(svc().reopen(req.params.runId, b.editedBy)); } catch (e) { fail(res, e); }
   });
 
   router.post('/:runId/amendments', (req, res) => {

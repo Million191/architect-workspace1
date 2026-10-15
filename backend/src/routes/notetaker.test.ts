@@ -78,7 +78,8 @@ describe('/api/notetaker', () => {
     const off = setup({ configured: false });
     const r = await request(off.app).post('/api/notetaker/sessions').send({ scheduledMeetingId: off.meeting().id, consent: true });
     expect(r.status).toBe(503);
-    expect(r.body.message).toMatch(/RECALL_API_KEY/);
+    expect(r.body.message).toBe('The meeting notetaker isn’t available yet — it needs administrator setup.');
+    expect(r.body.message).not.toMatch(/RECALL|docs\//);
     expect((await request(off.app).get('/api/notetaker/status')).body).toEqual({ configured: false, provider: null, settings: { autoSendToSynced: false } });
   });
 

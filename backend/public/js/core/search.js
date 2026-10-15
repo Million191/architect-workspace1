@@ -1,4 +1,4 @@
-// Meeting Assistant — search results: grouped (Meetings, Transcripts, Action items), highlighted,
+// Meeting Assistant — search results: grouped (Meetings, Transcripts), highlighted,
 // typo-tolerant, keyboard-operable. Mounted under the top-bar search (desktop) and in the full-screen
 // search (phones). Results come from GET /api/search; nothing is parsed as HTML.
 (function () {
@@ -86,7 +86,7 @@
       list.replaceChildren();
       options = []; active = -1;
       var items = recent();
-      if (!items.length) { list.appendChild(el('p', 'Search titles, people, dates, what was said, and action items.', 'search-hint')); status.textContent = ''; return; }
+      if (!items.length) { list.appendChild(el('p', 'Search titles, people, dates, and what was said.', 'search-hint')); status.textContent = ''; return; }
       var head = append(el('div', null, 'search-group-head'), el('span', 'Recent searches'),
         ui.button('Clear', 'ghost', function () { forgetAll(); drawRecent(); input.focus(); }, { size: 'sm' }));
       list.appendChild(head);
@@ -151,6 +151,9 @@
       return MA.api.search(q, { group: params.group, limit: params.group ? 50 : 3, exact: params.exact }).then(function (res) {
         if (mine !== seq) return; // a newer search started — drop this answer
         last = { query: q, exact: !!params.exact };
+        // Action items aren't shown in the app any more: leave that group out of the results.
+        res.groups = res.groups.filter(function (g) { return g.key !== 'actionItems'; });
+        res.total = res.groups.reduce(function (n, g) { return n + g.total; }, 0);
         draw(res);
       }).catch(function (err) {
         if (mine !== seq) return;

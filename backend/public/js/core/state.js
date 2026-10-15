@@ -35,7 +35,7 @@
     /** Calendar sync status ({ status, syncing, unavailable }), from /api/calendar/connections. */
     calendarSync: null,
     /** Dashboard: Meetings-card period, its counts, the chosen tab (null = automatic), and the period filter. */
-    dash: { range: 'week', counts: null, tab: null, rangeFilter: false },
+    dash: { range: 'week', tab: null, rangeFilter: false },
     /** Recent activity ({ items, total, shown }), from /api/activity. */
     activity: null,
     /** True while a request that changes something is in flight — blocks double submissions. */
@@ -54,30 +54,32 @@
     subscribe: function (fn) { listeners.push(fn); },
   };
 
-  /** One status vocabulary for the whole app (dashboard, calendar, review, send). Always a text label, never colour alone. */
-  // Each status has an icon and a text label, so it never relies on colour alone.
-  // Meeting lifecycle: processing → needs_review → emails_drafted → approved (draft-only) | sent; or failed.
+  /** One status vocabulary for the whole app (dashboard, calendar, review, send). Always icon + text, never colour alone. */
+  // Meeting lifecycle: processing → needs_review → in_progress → approved (a person clicked "Approve minutes")
+  // → emails_drafted (the email is written, waiting for "Approve & send", or sending is disabled) → sent; or failed.
   var DISPLAY = {
     upcoming: { label: 'Upcoming', kind: 'accent', icon: 'calendar' },
     postponed: { label: 'Postponed', kind: 'accent', icon: 'calendar-clock' },
     cancelled: { label: 'Cancelled', kind: 'neutral', icon: 'ban' },
     processing: { label: 'Processing', kind: 'neutral', icon: 'refresh-cw' },
     needs_review: { label: 'Needs review', kind: 'warning', icon: 'clock' },
+    in_progress: { label: 'In progress', kind: 'progress', icon: 'pencil' },
+    approved: { label: 'Reviewed', kind: 'success', icon: 'check' },
     emails_drafted: { label: 'Emails drafted', kind: 'accent', icon: 'mail' },
-    approved: { label: 'Approved', kind: 'success', icon: 'check' },
     sent: { label: 'Sent', kind: 'success', icon: 'send' },
     failed: { label: 'Failed', kind: 'danger', icon: 'circle-alert' },
   };
   MA.displayStatus = function (display) { return DISPLAY[display] || DISPLAY.upcoming; };
-  /** Status for a processed meeting, from its real server stage. */
-  MA.statusOf = function (stage) {
-    if (stage === 'sent') return DISPLAY.sent;
-    if (stage === 'approved_not_sent' || stage === 'approved') return DISPLAY.approved;
-    if (stage === 'emails_pending_approval' || stage === 'emails_drafted') return DISPLAY.emails_drafted;
-    if (stage === 'processing') return DISPLAY.processing;
-    if (stage === 'failed') return DISPLAY.failed;
+  /**
+   * Status of a meeting from what the server says. Prefer the server's `status` (it knows about review
+   * started / approved); a bare pipeline stage still maps sensibly for older callers.
+   */
+  MA.statusOf = function (statusOrStage) {
+    if (DISPLAY[statusOrStage]) return DISPLAY[statusOrStage];
+    if (statusOrStage === 'approved_not_sent' || statusOrStage === 'emails_pending_approval') return DISPLAY.emails_drafted;
     return DISPLAY.needs_review;
   };
-  /** Dashboard tabs: which statuses count as "Approved" (minutes approved, whatever happened to the email since). */
-  MA.APPROVED_STATUSES = ['emails_drafted', 'approved', 'sent'];
+  /** Dashboard tabs. "Needs review" = waiting for a person (not yet approved); "Approved" = explicitly approved (sent ones too). */
+  MA.REVIEW_STATUSES = ['needs_review', 'in_progress'];
+  MA.APPROVED_STATUSES = ['approved', 'emails_drafted', 'sent'];
 })();

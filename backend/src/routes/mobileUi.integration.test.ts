@@ -73,7 +73,7 @@ describe('Phone layout', () => {
     const menu = card.querySelector('.meeting-card-menu') as HTMLButtonElement;
     expect(menu.getAttribute('aria-label')).toBe('More actions for Budget review');
     menu.click();
-    expect(Array.from(page.doc.querySelectorAll('[role="menu"] .menu-label')).map((n) => n.textContent)).toEqual(['Review minutes', 'Rename', 'Copy link']);
+    expect(Array.from(page.doc.querySelectorAll('[role="menu"] .menu-label')).map((n) => n.textContent)).toEqual(['Review minutes', 'Rename', 'Copy link', 'Edit meeting', 'Delete meeting']);
     key(page, page.doc.querySelector('[role="menuitem"]')!, 'Escape');
     expect(text(page, 'h1.page-title')).toBe('Meetings'); // opening the menu did not open the meeting
 
@@ -81,12 +81,12 @@ describe('Phone layout', () => {
     await waitFor(() => text(page, 'h1.page-title') === 'Budget review', 'meeting opened from the card');
   });
 
-  it('bottom navigation: Meetings, Action items, Record, Settings; current page marked; Record opens the recording menu', async () => {
+  it('bottom navigation: Meetings, Record, People, Settings; current page marked; Record opens the recording menu', async () => {
     const app = server();
     await upload(app, 'Budget review', 'c');
     const page = track(openPage(app));
     await waitFor(() => bottom(page).length === 4, 'bottom nav');
-    expect(bottom(page).map((n) => n.querySelector('.bottom-label')!.textContent)).toEqual(['Meetings', 'Action items', 'Record', 'Settings']);
+    expect(bottom(page).map((n) => n.querySelector('.bottom-label')!.textContent)).toEqual(['Meetings', 'Record', 'People', 'Settings']);
     await waitFor(() => !!page.doc.querySelector('#bottomNav .bottom-count'), 'pending badge');
     expect(page.doc.querySelector('#bottomNav .bottom-count')!.getAttribute('aria-label')).toBe('1 need review');
     expect(bottom(page)[0].getAttribute('aria-current')).toBe('page');
@@ -94,16 +94,17 @@ describe('Phone layout', () => {
     (bottom(page)[3] as HTMLAnchorElement).click();
     await waitFor(() => text(page, 'h1.page-title') === 'Settings', 'settings');
     expect(bottom(page)[3].getAttribute('aria-current')).toBe('page');
-    // People is reachable from Settings on phones (it is not in the bottom bar).
-    (page.doc.getElementById('settingsPeople') as HTMLButtonElement).click();
+    // People has its own tab on phones (Settings no longer links to it).
+    (bottom(page)[2] as HTMLAnchorElement).click();
     await waitFor(() => text(page, 'h1.page-title') === 'People', 'people');
-    expect(bottom(page)[3].getAttribute('aria-current')).toBe('page');
+    expect(bottom(page)[2].getAttribute('aria-current')).toBe('page');
+    expect(bottom(page)[3].getAttribute('aria-current')).toBeNull();
 
     const record = page.doc.getElementById('bottomRecord') as HTMLButtonElement;
     expect(record.getAttribute('aria-haspopup')).toBe('menu');
     expect(record.textContent).toBe('Record');
     record.click();
-    expect(Array.from(page.doc.querySelectorAll('[role="menu"] .menu-label')).map((n) => n.textContent)).toEqual(['In-person meeting', 'Online meeting on this computer']);
+    expect(Array.from(page.doc.querySelectorAll('[role="menu"] .menu-label')).map((n) => n.textContent)).toEqual(['Record In Person Meeting', 'Record Online Meeting']);
   });
 
   it('search opens full screen, traps focus, shows results as you type, and Esc returns focus to the search button', async () => {
@@ -113,7 +114,7 @@ describe('Phone layout', () => {
     const page = track(openPage(app));
     await waitFor(() => page.doc.querySelectorAll('.meeting-card').length === 2, 'cards');
     const open = page.doc.getElementById('searchOpen') as HTMLButtonElement;
-    expect(open.getAttribute('aria-label')).toBe('Search meetings, transcripts, or action items');
+    expect(open.getAttribute('aria-label')).toBe('Search meetings and transcripts');
     open.focus();
     open.click();
     const overlay = page.doc.getElementById('searchOverlay')!;

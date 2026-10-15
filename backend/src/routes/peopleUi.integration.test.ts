@@ -98,11 +98,12 @@ describe('Participants with names and avatars', () => {
     await waitFor(() => page.calls.filter((c) => c === 'GET /api/people').length >= 2, 'People refresh');
     await new Promise((r) => setTimeout(r, 50));
     await waitFor(() => page.doc.querySelectorAll('.person-row').length === 2, 'two people');
-    expect(text(page, '.person-rows')).toContain('Name from a meeting invite');
+    expect(text(page, '.person-rows')).not.toContain('Name from a meeting invite'); // no source notes, just Name · Role · Email
+    (page.doc.getElementById('person-priya-example-com-edit') as HTMLButtonElement).click();
 
     const name = page.doc.getElementById('person-priya-example-com-name') as HTMLInputElement;
     const photo = page.doc.getElementById('person-priya-example-com-photo') as HTMLInputElement;
-    const save = name.closest('.person-row')!.querySelector('.person-row-actions button') as HTMLButtonElement;
+    const save = name.closest('.person-row')!.querySelector('[id$="-save"]') as HTMLButtonElement;
     expect(save.disabled).toBe(true);
     typeInto(page, photo, 'javascript:alert(1)');
     save.click();
@@ -111,9 +112,12 @@ describe('Participants with names and avatars', () => {
     expect(page.calls.some((c) => c.startsWith('PUT'))).toBe(false);
 
     typeInto(page, name, 'Priya Raman');
+    typeInto(page, page.doc.getElementById('person-priya-example-com-role') as HTMLInputElement, 'Head of Design');
     typeInto(page, photo, 'https://photos.example/priya.jpg');
     save.click();
     await waitFor(() => text(page, '#toasts').includes('Saved Priya Raman'), 'saved toast');
+    await waitFor(() => text(page, '.person-row[data-email="priya@example.com"] .col-role') === 'Head of Design', 'role shown');
+    expect(page.doc.querySelector('.person-row[data-email="priya@example.com"] input')).toBeNull(); // closed after saving
     await waitFor(() => !!page.doc.querySelector('.person-row img.person-avatar'), 'photo shown');
     const img = page.doc.querySelector('.person-row img.person-avatar') as HTMLImageElement;
     expect(img.alt).toBe('Priya Raman');

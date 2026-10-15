@@ -1,12 +1,20 @@
 import { MeetingPipelineStores, PipelineRunView, PipelineStage } from './types';
+import { approvalRound } from './reviewActions';
+import { dedupeActionItems } from './dedupe';
 
 /**
- * Status shown in the meetings list, derived only from the run's real stage — never guessed:
- * needs_review (minutes waiting for approval) → emails_drafted (minutes approved; the email drafts
- * are waiting for the final approval) → approved (final approval, draft-only: nothing sent) or sent.
+ * Status shown in the meetings list, derived only from real records — never guessed:
+ * - needs_review: AI minutes are ready and nobody has worked on them yet (or edited approved minutes
+ *   that must be approved again).
+ * - in_progress: a reviewer has started (edited, corrected, renamed, or requested changes), not approved yet.
+ * - approved: a person clicked "Approve minutes" and the email isn't drafted yet (momentary: the email
+ *   is drafted right after the approval).
+ * - emails_drafted: minutes approved and the email written — waiting for "Approve & send", or approved
+ *   in draft-only mode where sending is disabled.
+ * - sent: the approved minutes were emailed.
  * "processing" and "failed" exist only on the page / for live recordings, not for pipeline runs.
  */
-export type MeetingStatus = 'needs_review' | 'emails_drafted' | 'approved' | 'sent';
+export type MeetingStatus = 'needs_review' | 'in_progress' | 'approved' | 'emails_drafted' | 'sent';
 
 export interface MeetingListItem {
   runId: string;
@@ -36,11 +44,17 @@ export interface ActionItemListItem {
   loggedAt: string;
 }
 
-function statusOf(stage: PipelineStage): MeetingStatus {
+export function statusOf(stage: PipelineStage, reviewStarted: boolean, reopened = false): MeetingStatus {
   if (stage === 'sent') return 'sent';
-  if (stage === 'approved_not_sent') return 'approved';
-  if (stage === 'emails_pending_approval') return 'emails_drafted';
-  return 'needs_review';
+  if (stage === 'approved_not_sent' || stage === 'emails_pending_approval') return 'emails_drafted';
+  // Approved minutes that were edited go back to "Needs review": they must be approved again.
+  if (reopened) return 'needs_review';
+  return reviewStarted ? 'in_progress' : 'needs_review';
+}
+
+/** A reviewer has touched the draft: every edit, correction, rename or change request is a Gate #1 revision. */
+export function reviewStarted(stores: MeetingPipelineStores, runId: string): boolean {
+  return (stores.minutesGate.get(runId)?.revisions.length ?? 0) > 0;
 }
 
 /**
@@ -68,7 +82,7 @@ export function listMeetings(stores: MeetingPipelineStores, getRun: (runId: stri
       participants: summary.attendees,
       people: summary.attendees.map((name) => ({ name, email: run.recipients?.[name] })),
       stage: run.stage,
-      status: statusOf(run.stage),
+      status: statusOf(run.stage, reviewStarted(stores, runId), approvalRound(stores, runId) > 0),
       actionItemCount: run.minutes.actionItems.length,
       approvedAt: run.finalApproval?.approvedAt,
     });
@@ -81,7 +95,8 @@ export function listTrackedActionItems(stores: MeetingPipelineStores): ActionIte
   const items: ActionItemListItem[] = [];
   for (const [runId, result] of stores.tracker) {
     const title = stores.finalApprovals.get(runId)?.minutes?.meetingSummary.title;
-    for (const tracked of result.loggedItems) {
+    // One row per (task, owner) in a meeting, even for meetings logged before duplicates were removed.
+    for (const tracked of dedupeActionItems(result.loggedItems.map((t) => ({ ...t, task: t.actionItem.task, owner: t.actionItem.owner })))) {
       items.push({
         runId,
         meetingTitle: title,

@@ -65,7 +65,7 @@ export function createNotetakerRouter(deps: NotetakerRouterDeps): Router {
   router.put('/settings', (req, res) => {
     const b = settingsSchema.safeParse(req.body ?? {});
     if (!b.success) { res.status(400).json({ error: 'ValidationError', message: b.error.issues.map((i) => i.message).join(' ') }); return; }
-    if (b.data.autoSendToSynced && !bots().configured()) { res.status(503).json({ error: 'BotNotConfigured', message: 'The notetaker isn’t set up on this server. Add RECALL_API_KEY first.' }); return; }
+    if (b.data.autoSendToSynced && !bots().configured()) { res.status(503).json({ error: 'BotNotConfigured', message: 'The meeting notetaker isn’t available yet — it needs administrator setup.' }); return; }
     res.json({ autoSendToSynced: writeBotSettings(deps.settings, b.data).autoSendToSynced });
     deps.onActivity?.();
   });

@@ -84,6 +84,7 @@ a { color: inherit; }
 .badge-success { background: var(--color-success-subtle); color: var(--color-success); }
 .badge-danger { background: var(--color-danger-subtle); color: var(--color-danger); }
 .badge-accent { background: var(--color-accent-subtle); color: var(--color-accent); }
+.badge-progress { background: var(--color-progress-subtle); color: var(--color-progress); }
 
 /* Callouts (inline messages) */
 .callout { display: flex; gap: var(--space-1); align-items: flex-start; padding: 12px var(--space-2); border-radius: var(--radius-md); font-size: var(--text-sm); border: var(--border-width) solid transparent; }

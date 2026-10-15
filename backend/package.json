@@ -10,7 +10,9 @@
     "dev": "node --env-file-if-exists=.env -r ts-node/register src/server.ts",
     "dev:demo": "ts-node src/server.ts --demo-providers",
     "start": "node dist/server.js",
-    "test": "jest"
+    "test": "jest",
+    "cleanup:duplicates": "ts-node src/scripts/mergeDuplicates.ts",
+    "auth:reset": "ts-node src/scripts/resetLogin.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",

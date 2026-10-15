@@ -51,6 +51,8 @@ export interface ScheduledMeeting {
   participants: Participant[];
   link?: string;
   agenda?: string;
+  /** Who organised it (calendar sync). */
+  organizer?: Participant;
   status: ScheduleStatus;
   originalStart?: string;
   originalEnd?: string;
@@ -77,6 +79,7 @@ export interface MeetingInput {
   participants: Participant[];
   link?: string;
   agenda?: string;
+  organizer?: Participant;
 }
 
 /** A change made through the API, with who made it and (for postpone/cancel) why. */

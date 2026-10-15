@@ -40,7 +40,7 @@ describe('/api/calendar', () => {
     t.apis.google.events['primary-cal'] = [gEvent('e1', 2, { summary: 'Synced sync', hangoutLink: 'https://meet.google.com/x' })];
     const back = await connectViaBrowser(t.app);
     expect(back.status).toBe(302);
-    expect(back.headers.location).toBe('/?page=settings&calendarConnected=google');
+    expect(back.headers.location).toBe('/?page=settings&calendarProvider=google&calendarConnected=google');
     const status = (await request(t.app).get('/api/calendar/connections')).body;
     expect(status.providers[0]).toMatchObject({ provider: 'google', configured: true, connection: { accountEmail: 'sara.lee@acme.com', lastSyncedAt: expect.any(String) } });
     expect(JSON.stringify(status)).not.toMatch(/access-|refresh-1|sealedTokens/); // tokens never reach the page
@@ -62,7 +62,8 @@ describe('/api/calendar', () => {
     expect(decodeURIComponent(forged.headers.location)).toContain('expired or was already used');
     const bare = app({ configured: false });
     const start = await request(bare.app).get('/api/calendar/oauth/microsoft/start');
-    expect(decodeURIComponent(start.headers.location)).toContain('Outlook isn’t set up on this server yet');
+    expect(decodeURIComponent(start.headers.location)).toContain('Calendar integration isn’t available yet — it needs administrator setup.');
+    expect(decodeURIComponent(start.headers.location)).not.toMatch(/MS_CLIENT|TOKEN_ENCRYPTION_KEY|secret/i);
     expect((await request(t.app).get('/api/calendar/oauth/yahoo/start')).status).toBe(404);
   });
 

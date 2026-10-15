@@ -134,7 +134,7 @@ describe('minutes document', () => {
     expect(() => svc.version(runId, 99)).toThrow('doesn’t exist');
   });
 
-  it('approval locks; editing approved minutes needs a reason, makes a new version, and sends “Updated minutes” once', async () => {
+  it('approval locks; editing reviewed minutes needs a reason, makes a new version, and sends “Updated minutes” once', async () => {
     const { svc, pipeline, runId, send } = await setup('send');
     await pipeline.approveMinutes(runId, 'Sara Lee');
     expect(svc.get(runId).state).toBe('locked');
@@ -143,7 +143,7 @@ describe('minutes document', () => {
     send.mockClear();
     const approved = svc.get(runId);
     expect(approved).toMatchObject({ state: 'approved', approval: { by: 'Sara Lee', stage: 'final' } });
-    expect(() => svc.save(runId, clone(approved.content), approved.revision, 'Sara')).toThrow('Edit approved minutes');
+    expect(() => svc.save(runId, clone(approved.content), approved.revision, 'Sara')).toThrow('Edit reviewed minutes');
     expect(() => svc.startAmendment(runId, 'x', 'Sara')).toThrow('why');
 
     const amending = svc.startAmendment(runId, 'Fixed the launch date', 'Sara Lee');

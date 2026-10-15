@@ -5,7 +5,7 @@ import { createScheduleService } from '../services/schedule/scheduleService';
 import { ScheduledMeeting } from '../services/schedule/types';
 import { createMeetingPipeline, createPipelineStores } from '../services/meetingPipeline/meetingPipelineService';
 import { createDemoProviders } from '../services/meetingPipeline/demoProviders';
-import { openPage, Page, text, waitFor } from './__testutils__/pageHarness';
+import { openPage, Page, text, waitFor, goToStep } from './__testutils__/pageHarness';
 
 /** Meetings dashboard: status badges, tabs and filters, clickable rows, inline rename, stat cards, recent activity. */
 function wav(salt: string): Buffer {
@@ -66,10 +66,13 @@ describe('Status badge', () => {
     const MA = (page.dom.window as unknown as MAWindow).MA;
     const expected: Array<[string, string, string]> = [
       ['processing', 'Processing', 'badge-neutral'],
+      ['needs_review', 'Needs review', 'badge-warning'],
       ['minutes_pending_approval', 'Needs review', 'badge-warning'],
+      ['in_progress', 'In progress', 'badge-progress'],
+      ['approved', 'Reviewed', 'badge-success'],
       ['emails_drafted', 'Emails drafted', 'badge-accent'],
-      ['emails_pending_approval', 'Emails drafted', 'badge-accent'],
-      ['approved_not_sent', 'Approved', 'badge-success'],
+      ['emails_pending_approval', 'Emails drafted', 'badge-accent'], // minutes approved; the email waits for "Approve & send"
+      ['approved_not_sent', 'Emails drafted', 'badge-accent'], // draft-only: approved, sending disabled
       ['sent', 'Sent', 'badge-success'],
       ['failed', 'Failed', 'badge-danger'],
     ];
@@ -94,7 +97,7 @@ describe('Meetings tabs and table', () => {
     expect(page.doc.querySelector('[role="tablist"]')!.getAttribute('aria-label')).toBe('Filter meetings');
     expect(tab(page, 'needs_review').getAttribute('aria-selected')).toBe('true');
     expect(tab(page, 'needs_review').textContent).toBe('Needs review1');
-    expect(tab(page, 'approved').textContent).toBe('Approved1');
+    expect(tab(page, 'approved').textContent).toBe('Reviewed1');
     expect(tab(page, 'all').textContent).toBe('All2');
     expect(tab(page, 'approved').getAttribute('tabindex')).toBe('-1'); // roving tabindex
     expect(rowTitles(page)).toEqual(['Budget review']);
@@ -102,16 +105,19 @@ describe('Meetings tabs and table', () => {
 
     tab(page, 'needs_review').focus();
     key(page, tab(page, 'needs_review'), 'ArrowRight');
-    await waitFor(() => tab(page, 'approved').getAttribute('aria-selected') === 'true', 'Approved tab');
+    await waitFor(() => tab(page, 'approved').getAttribute('aria-selected') === 'true', 'Reviewed tab');
     expect(page.doc.activeElement).toBe(tab(page, 'approved'));
     expect(rowTitles(page)).toEqual(['Design sync']);
-    expect(text(page, '.meetings-table tbody .badge')).toBe('Approved');
+    expect(text(page, '.meetings-table tbody .badge')).toBe('Emails drafted');
 
     key(page, tab(page, 'approved'), 'End');
     await waitFor(() => tab(page, 'all').getAttribute('aria-selected') === 'true', 'All tab');
     expect(rowTitles(page).sort()).toEqual(['Budget review', 'Design sync']);
-    // Columns: date with time · duration, title, participants, action items, status; the chevron column is decorative.
-    expect(Array.from(page.doc.querySelectorAll('.meetings-table th')).map((th) => th.textContent)).toEqual(['Date', 'Title', 'Participants', 'Action items', 'Status']);
+    // Columns: date with time · duration, title, participants, status; the chevron column is decorative (no action items).
+    expect(Array.from(page.doc.querySelectorAll('.meetings-table th[scope="col"]')).map((th) => th.textContent)).toEqual(['Date', 'Title', 'Participants', 'Status', 'Actions']);
+    // The last column (••• More + chevron) has its own header cell, so the header band spans the full width.
+    expect(page.doc.querySelector('.meetings-table thead th.col-row-actions')).not.toBeNull();
+    expect(rows(page)[0].querySelector('.row-more')!.getAttribute('aria-label')).toMatch(/^More actions for /);
     expect(rows(page)[0].querySelector('.date-sub')!.textContent).toMatch(/min/);
     expect(rows(page)[0].querySelector('.col-chevron')!.getAttribute('aria-hidden')).toBe('true');
   });
@@ -225,7 +231,7 @@ describe('Meetings tabs and table', () => {
 });
 
 describe('Stat cards, activity, draft-only cues', () => {
-  it('Review now opens the first pending meeting; Action items card navigates; the range selector re-counts', async () => {
+  it('Review now opens the first pending meeting; no action-items card; the range selector re-counts', async () => {
     const app = server();
     await upload(app, 'Budget review', 'st-a');
     const page = track(openPage(app));
@@ -233,6 +239,7 @@ describe('Stat cards, activity, draft-only cues', () => {
     expect(text(page, '#pendingCard-value')).toBe('1');
     expect(page.doc.querySelector('#pendingCard')!.closest('.stat-card')!.className).toContain('is-attention');
     await waitFor(() => text(page, '#meetingsCard-value') === '1', 'meetings this week');
+    expect(page.doc.getElementById('meetingsCard-secondary')).toBeNull(); // no "vs last week" line
     await waitFor(() => /^Oldest from (today|yesterday)$/.test(text(page, '#pendingCard-secondary')), 'oldest waiting');
 
     // Range selector: a real menu, not a decorative chevron.
@@ -246,14 +253,15 @@ describe('Stat cards, activity, draft-only cues', () => {
     expect(page.doc.getElementById('meetingsCard-secondary')).toBeNull(); // no comparison for All time — nothing faked
 
     (page.doc.getElementById('reviewNow') as HTMLButtonElement).click();
-    await waitFor(() => title(page) === 'Budget review' && !!page.doc.getElementById('transcriptHeading'), 'review page');
-    // Draft-only mode: the approve action carries a Draft-only badge.
+    await waitFor(() => title(page) === 'Budget review' && !!page.doc.querySelector('.wf-steps'), 'review page');
+    // Draft-only mode: the approve action (Approval step) carries a Draft-only badge.
+    await goToStep(page, 'approval');
     expect(page.doc.getElementById('draftOnlyBadge')!.textContent).toBe('Draft-only');
 
     (page.doc.querySelector('.nav-link') as HTMLAnchorElement).click();
-    await waitFor(() => !!page.doc.getElementById('itemsCard'), 'dashboard');
-    (page.doc.getElementById('itemsCard') as HTMLButtonElement).click();
-    await waitFor(() => title(page) === 'Action items', 'action items page');
+    await waitFor(() => !!page.doc.getElementById('pendingCard'), 'dashboard');
+    expect(page.doc.getElementById('itemsCard')).toBeNull(); // no action-items card on the dashboard
+    expect(page.doc.querySelectorAll('.stats .stat-main')).toHaveLength(2);
   });
 
   it('Recent activity lists what happened and opens the meeting; hidden when there is nothing', async () => {
@@ -265,8 +273,8 @@ describe('Stat cards, activity, draft-only cues', () => {
     await approveAll(app, await upload(app, 'Weekly sync', 'act-a'));
     const page = track(openPage(app));
     await waitFor(() => !!page.doc.getElementById('activityHeading'), 'activity');
-    expect(text(page, '.activity-list')).toContain('Minutes approved for Weekly sync');
-    expect(text(page, '.activity-list')).toContain('Emails approved for Weekly sync (not sent — draft-only mode)');
+    expect(text(page, '.activity-list')).toContain('Minutes reviewed for Weekly sync');
+    expect(text(page, '.activity-list')).toContain('Emails reviewed for Weekly sync (not sent — draft-only mode)');
     expect(page.doc.querySelector('.activity-list time')!.getAttribute('datetime')).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     (page.doc.querySelector('.activity-list button') as HTMLButtonElement).click();
     await waitFor(() => title(page) === 'Weekly sync', 'meeting opened from activity');

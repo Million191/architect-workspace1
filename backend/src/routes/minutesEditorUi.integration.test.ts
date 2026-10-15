@@ -7,7 +7,7 @@ import { createPeopleService } from '../services/people/peopleService';
 import { PersonRecord } from '../services/people/types';
 import { createMeetingPipeline, createPipelineStores, MeetingPipeline } from '../services/meetingPipeline/meetingPipelineService';
 import { createDemoProviders } from '../services/meetingPipeline/demoProviders';
-import { openPage, Page, text, waitFor } from './__testutils__/pageHarness';
+import { goToStep, openPage, Page, text, waitFor } from './__testutils__/pageHarness';
 import { demoAssistant } from '../services/minutesDoc/assistant';
 
 /** Editable minutes in the real page: sections, formatting, autosave (incl. offline), action items, versions, conflicts, approval. */
@@ -29,7 +29,7 @@ async function server(): Promise<{ app: Express; runId: string; pipeline: Meetin
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Q = any;
-type Win = { MA: { review: { sections: { editors: Record<string, Q> } }; store: { setForm(p: object): void } }; localStorage: Storage; fetch: (u: string, o?: { method?: string }) => Promise<unknown> };
+type Win = { MA: { review: { sections: { editors: Record<string, Q> } }; store: { setForm(p: object): void }; minutes: { get(): { content: { sections: Array<{ title: string }> } } } }; localStorage: Storage; fetch: (u: string, o?: { method?: string }) => Promise<unknown> };
 const pages: Page[] = [];
 const track = (p: Page) => (pages.push(p), p);
 const w = (page: Page) => page.dom.window as unknown as Win;
@@ -37,10 +37,13 @@ const editors = (page: Page): Q[] => Object.values(w(page).MA.review?.sections?.
 const titles = (page: Page) => Array.from(page.doc.querySelectorAll('.md-title')).map((n) => (n as HTMLInputElement).value);
 const status = (page: Page) => text(page, '#saveState');
 function typeRich(q: Q, text: string) { q.focus(); q.setSelection(q.getLength() - 1, 0, 'silent'); q.insertText(q.getLength() - 1, text, 'user'); }
-async function open(app: Express, runId: string) {
+/** Opens the meeting on a workflow step — by default the Summary step in Edit mode (the minutes editor). */
+async function open(app: Express, runId: string, step = 'summary', edit = true) {
   const page = track(openPage(app, `/?run=${runId}&view=review`));
   w(page).MA.store.setForm({ reviewer: 'Sara Lee' });
-  await waitFor(() => editors(page).length > 0, 'the minutes editor');
+  await goToStep(page, step, edit);
+  if (step === 'summary') await waitFor(() => editors(page).length > 0, 'the minutes editor');
+  if (step === 'decisions') await waitFor(() => !!page.doc.getElementById('addActionItem'), 'the action items editor'); // the step is now just "Action items"
   return page;
 }
 const doc = async (app: Express, runId: string) => (await request(app).get(`/api/minutes/${runId}`)).body;
@@ -100,7 +103,8 @@ describe('Editable minutes', () => {
     await waitFor(() => status(page) === 'Saved', 'saved structure', 12000);
     const saved = (await doc(app, runId)).content.sections.map((s: { title: string }) => s.title);
     expect(saved[0]).toBe('Timeline');
-    expect(saved.at(-2)).toBe('Next steps');
+    // Moved up among the Summary step's sections (the Decisions section, on its own step, is never swapped).
+    expect(saved.indexOf('Next steps')).toBe(saved.indexOf('Support training') - 1);
   });
 
   it('offline: “Couldn’t save. Retry”, text kept in this browser, leave warning; Retry saves it', async () => {
@@ -126,62 +130,16 @@ describe('Editable minutes', () => {
     expect(JSON.stringify((await doc(app, runId)).content)).toContain('Offline edit.');
   });
 
-  it('action items: add with owner picker, due date, priority; delete with Undo; “Not an action item”; timestamp jumps to the transcript', async () => {
-    const { app, runId, pipeline } = await server();
-    const page = await open(app, runId);
-    const before = page.doc.querySelectorAll('.ai-list .ai-row').length;
-    (page.doc.getElementById('addActionItem') as HTMLButtonElement).click();
-    const n = before + 1;
-    const task = page.doc.querySelector(`[aria-label="Action item ${n}"]`) as HTMLInputElement;
-    expect(page.doc.activeElement).toBe(task);
-    task.value = 'Write the release note';
-    task.dispatchEvent(new page.dom.window.Event('input', { bubbles: true }));
-    const owner = page.doc.querySelector(`[aria-label="Owner of action item ${n}"]`) as HTMLInputElement;
-    owner.focus();
-    owner.value = 'tom';
-    owner.dispatchEvent(new page.dom.window.Event('input', { bubbles: true }));
-    expect(owner.getAttribute('aria-expanded')).toBe('true');
-    expect(text(page, `#${owner.getAttribute('aria-controls')}`)).toContain('Tom Ward');
-    owner.dispatchEvent(new page.dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    expect(owner.value).toBe('Tom Ward');
-    const due = page.doc.querySelector(`[aria-label="Due date for action item ${n}"]`) as HTMLInputElement;
-    due.value = '2026-10-20';
-    due.dispatchEvent(new page.dom.window.Event('change', { bubbles: true }));
-    const prio = page.doc.querySelector(`[aria-label="Priority for action item ${n}"]`) as HTMLSelectElement;
-    prio.value = 'high';
-    prio.dispatchEvent(new page.dom.window.Event('change', { bubbles: true }));
-    await waitFor(() => status(page) === 'Saved', 'saved item', 12000);
-    expect(pipeline.getRun(runId).minutes.actionItems.at(-1)).toMatchObject({ task: 'Write the release note', owner: 'Tom Ward', dueDate: '2026-10-20', priority: 'high', status: 'open' });
-
-    // "Not an action item" → hidden list with Restore; Delete → Undo toast.
-    (page.doc.querySelector('[aria-label="More actions for action item 1"]') as HTMLButtonElement).click();
-    menuItem(page, 'Not an action item').click();
-    await waitFor(() => text(page, '.ai-dismissed summary') === 'Not action items (1)', 'dismissed');
-    (page.doc.querySelector('[aria-label="More actions for action item 1"]') as HTMLButtonElement).click();
-    menuItem(page, 'Delete').click();
-    await waitFor(() => text(page, '#toasts').includes('Action item deleted'), 'undo toast');
-    const afterDelete = page.doc.querySelectorAll('.ai-list .ai-row').length;
-    (page.doc.querySelector('#toasts .toast-action') as HTMLButtonElement).click();
-    expect(page.doc.querySelectorAll('.ai-list .ai-row').length).toBe(afterDelete + 1);
-    await waitFor(() => status(page) === 'Saved', 'saved', 12000);
-    expect(pipeline.getRun(runId).minutes.actionItems).toHaveLength(before); // one dismissed, one deleted+restored, one added
-
-    // Timestamp → transcript line highlighted (and the Transcript tab selected on phones).
-    (page.doc.querySelector('.ai-row .time-link') as HTMLButtonElement).click();
-    expect(page.doc.querySelectorAll('.transcript-line.is-highlighted')).toHaveLength(1);
-    expect(page.doc.getElementById('tab-transcript')!.getAttribute('aria-selected')).toBe('true');
-  });
-
   it('insert from transcript: a line becomes a quote with speaker and time', async () => {
     const { app, runId } = await server();
-    const page = await open(app, runId);
-    const firstTitle = titles(page)[0];
+    const page = await open(app, runId, 'transcript', false);
+    const firstTitle = w(page).MA.minutes.get().content.sections[0].title;
     (page.doc.querySelector('.transcript-time-btn') as HTMLButtonElement).click();
     menuItem(page, `Quote in “${firstTitle}”`).click();
-    await waitFor(() => !!editors(page)[0].root.querySelector('blockquote'), 'quote inserted');
-    expect(editors(page)[0].root.querySelector('blockquote').textContent).toMatch(/^“.+” — .+, 0:00$/);
+    await waitFor(() => text(page, '#toasts').includes(`Added to “${firstTitle}”`), 'added toast');
     await waitFor(() => status(page) === 'Saved', 'saved', 12000);
-    expect((await doc(app, runId)).content.sections[0].html).toContain('<blockquote>');
+    const html = (await doc(app, runId)).content.sections[0].html;
+    expect(html).toMatch(/<blockquote>“.+” — .+, 0:00<\/blockquote>/);
   });
 
   it('version history: compare with the AI draft, preview, restore (as a new version)', async () => {
@@ -219,30 +177,25 @@ describe('Editable minutes', () => {
     await waitFor(() => editors(page).length > 0 && editors(page)[0].getText().trim() === 'Tom rewrote this.', 'reloaded');
   });
 
-  it('approved: read-only with “Approved by”; editing needs a reason, then “Send updated minutes”', async () => {
+  it('reviewed: read-only with “Reviewed by”; Edit Summary warns, and saving puts the minutes back to Needs review', async () => {
     const { app, runId, pipeline } = await server();
     await pipeline.approveMinutes(runId, 'Sara Lee');
     await pipeline.approveEmailsAndSend(runId, 'Sara Lee');
-    const page = await open(app, runId);
-    await waitFor(() => text(page, '.review-banners').includes('Approved by Sara Lee on'), 'approved banner');
+    const page = await open(app, runId, 'approval', false); // the summary is edited on the Review step
+    await waitFor(() => text(page, '.review-banners').includes('Reviewed by Sara Lee on') && editors(page).length > 0, 'reviewed banner');
+    expect(text(page, '.review-banners')).toContain('choose Edit Summary on the Review step — they’ll need approval again');
     expect(editors(page)[0].root.getAttribute('contenteditable')).toBe('false');
-    (page.doc.getElementById('editApproved') as HTMLButtonElement).click();
-    (page.doc.getElementById('amendStart') as HTMLButtonElement).click();
-    expect(text(page, '[role="dialog"] .help-error')).toBe('Say briefly why the approved minutes are being changed.');
-    const reason = page.doc.getElementById('amendReason') as HTMLTextAreaElement;
-    reason.value = 'Corrected the launch date';
-    (page.doc.getElementById('amendStart') as HTMLButtonElement).click();
-    await waitFor(() => text(page, '.review-banners').includes('Editing approved minutes.'), 'amending');
-    await waitFor(() => editors(page)[0].root.getAttribute('contenteditable') === 'true', 'editable again');
+    (page.doc.getElementById('editStep') as HTMLButtonElement).click();
+    await waitFor(() => text(page, '#reopenWarning') === 'Editing reviewed minutes will require approval again.', 'warning');
+    (page.doc.getElementById('reopenContinue') as HTMLButtonElement).click();
+    await waitFor(() => editors(page).length > 0 && editors(page).every((q) => q.root.getAttribute('contenteditable') === 'true'), 'all sections editable');
     typeRich(editors(page)[0], ' Launch is Nov 3.');
-    await waitFor(() => status(page) === 'Saved', 'saved amendment', 12000);
+    (page.doc.getElementById('editSave') as HTMLButtonElement).click();
+    await waitFor(() => text(page, '#toasts').includes('the minutes need approval again'), 'saved and reopened', 12000);
+    expect(pipeline.getRun(runId).status).toBe('needs_review');
     expect(pipeline.getRun(runId).minutes.discussionTopics[0].summary).toContain('Launch is Nov 3.');
-    (page.doc.getElementById('finishAmendment') as HTMLButtonElement).click();
-    await waitFor(() => !!page.doc.getElementById('sendUpdate'), 'send updated minutes offer');
-    (page.doc.getElementById('sendUpdate') as HTMLButtonElement).click();
-    await waitFor(() => text(page, '#toasts').includes('Updated minutes drafted — not sent (draft-only mode)'), 'update toast');
     const versions = (await request(app).get(`/api/minutes/${runId}/versions`)).body.versions;
-    expect(versions[0]).toMatchObject({ kind: 'amendment', reason: 'Corrected the launch date' });
+    expect(versions.some((v: { reason?: string }) => /reopened for editing/.test(v.reason ?? ''))).toBe(true);
   });
 
   it('AI help: a suggestion preview with “Keep mine” or “Replace” — never applied without a choice', async () => {
@@ -274,7 +227,7 @@ describe('Editable minutes', () => {
 
   it('transcript corrections: rename a speaker, then “Update minutes with corrected names”', async () => {
     const { app, runId, pipeline } = await server();
-    const page = await open(app, runId);
+    const page = await open(app, runId, 'transcript', false);
     const from = pipeline.getRun(runId).transcript[0].speakerLabel;
     (page.doc.getElementById('correctTranscript') as HTMLButtonElement).click();
     const input = page.doc.getElementById('rename-0') as HTMLInputElement;

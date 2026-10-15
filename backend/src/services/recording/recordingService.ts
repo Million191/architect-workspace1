@@ -1,3 +1,4 @@
+import { existsSync } from 'fs';
 import { readFileSync } from 'fs';
 import { RecordingStore } from './recordingStore';
 import { RawAudioRetention, RecordingAttendee, RecordingMarker, RecordingMeta, RecordingMode } from './types';
@@ -111,6 +112,19 @@ export function createRecordingService(opts: { store: RecordingStore; now?: () =
     /** Recordings whose processing failed and that haven't become a meeting (shown as "Failed"). */
     listFailed(): RecordingMeta[] {
       return store.list().filter((m) => m.status === 'failed' && !m.runId);
+    },
+
+    /** The meeting made from a recording was deleted: remove the recording too (audio and chunks). Idempotent. */
+    forgetRun(runId: string): void {
+      for (const m of store.list()) if (m.runId === runId && !inFlight.has(m.id)) store.remove(m.id);
+    },
+
+    /** The playable audio of the recording behind a meeting, unless retention already deleted it. */
+    audioFor(runId: string): { path: string; mime: string } | undefined {
+      const meta = store.list().find((m) => m.runId === runId);
+      if (!meta || meta.audioDeletedAt || meta.status !== 'ready') return undefined;
+      const file = store.audioPath(meta);
+      return existsSync(file) ? { path: file, mime: meta.mimeType.split(';')[0].trim() || 'audio/webm' } : undefined;
     },
 
     findByRun(runId: string): RecordingMeta | undefined {

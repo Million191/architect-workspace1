@@ -85,7 +85,7 @@ describe('/api/schedule', () => {
     expect(linked.body).toMatchObject({ runId: draft.body.runId, display: 'needs_review' });
     expect((await request(a).put(`/api/schedule/${id}`).send(body)).status).toBe(409);
 
-    const other = (await request(a).post('/api/schedule').send(body)).body.meeting.id;
+    const other = (await request(a).post('/api/schedule').send({ ...body, title: 'Q4 budget review (follow-up)' })).body.meeting.id;
     await request(a).post(`/api/schedule/${other}/cancel`).send({});
     const refused = await request(a).post('/api/meetings/draft').field('attendees', 'Priya').field('scheduledMeetingId', other).attach('audio', wav('refused'), 'm.wav');
     expect(refused.status).toBe(409);

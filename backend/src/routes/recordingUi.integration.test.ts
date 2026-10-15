@@ -12,7 +12,7 @@ import { createMeetingPipeline, createPipelineStores } from '../services/meeting
 import { createDemoProviders } from '../services/meetingPipeline/demoProviders';
 import { createRecordingService } from '../services/recording/recordingService';
 import { RecordingStore } from '../services/recording/recordingStore';
-import { openPage, Page, text, waitFor } from './__testutils__/pageHarness';
+import { openPage, Page, text, waitFor, goToStep } from './__testutils__/pageHarness';
 
 /**
  * Live in-person recording in the real page: setup + consent → recording → chunks uploaded every few
@@ -153,8 +153,8 @@ describe('Live in-person recording', () => {
     await waitFor(() => text(page, '.rec-markers').includes('Budget decision'), 'marker listed');
 
     // Leaving the page keeps recording, with an indicator on every page.
-    (Array.from(page.doc.querySelectorAll('.nav-link')).find((a) => a.querySelector('.label-text')?.textContent === 'Action items') as HTMLAnchorElement).click();
-    await waitFor(() => text(page, 'h1.page-title') === 'Action items', 'another page');
+    (Array.from(page.doc.querySelectorAll('.nav-link')).find((a) => a.querySelector('.label-text')?.textContent === 'People') as HTMLAnchorElement).click();
+    await waitFor(() => text(page, 'h1.page-title') === 'People', 'another page');
     expect(byId(page, 'recPill').hidden).toBe(false);
     expect(byId(page, 'recPill').getAttribute('aria-label')).toBe('Recording in progress — return to the recorder');
     click(page, 'recPill');
@@ -162,8 +162,9 @@ describe('Live in-person recording', () => {
 
     // Stop → processing → review; the marker shows in the transcript.
     click(page, 'recStop');
-    await waitFor(() => !!page.doc.getElementById('transcriptHeading'), 'review', 15000);
+    await waitFor(() => !!page.doc.querySelector('.wf-steps'), 'review', 15000);
     expect(text(page, 'h1.page-title')).toBe('Ops standup');
+    await goToStep(page, 'transcript');
     await waitFor(() => text(page, '.transcript-list').includes('Budget decision'), 'marker in transcript');
     expect(page.doc.querySelector('.transcript-marker')!.getAttribute('aria-label')).toMatch(/^Marker at \d+:\d{2}: Budget decision$/);
     expect(byId(page, 'recPill').hidden).toBe(true);
@@ -189,7 +190,7 @@ describe('Live in-person recording', () => {
     await waitFor(() => text(page, '.recovered').includes('Unfinished recording — Crashed meeting.'), 'recovery banner');
     expect(text(page, '.recovered')).toContain('1:05 recorded and saved on this device');
     (Array.from(page.doc.querySelectorAll('.recovered button')).find((b) => b.textContent === 'Upload and process') as HTMLButtonElement).click();
-    await waitFor(() => !!page.doc.getElementById('transcriptHeading'), 'processed into review', 15000);
+    await waitFor(() => !!page.doc.querySelector('.wf-steps'), 'processed into review', 15000);
     expect(text(page, 'h1.page-title')).toBe('Crashed meeting');
     expect(page.doc.querySelector('.recovered')).toBeNull();
   });
@@ -238,7 +239,7 @@ describe('Online meeting on this computer + Start recording from the calendar', 
     w.__rec!.emit();
     await waitFor(() => w.__chunkPuts === 1, 'chunk uploaded');
     click(page, 'recStop');
-    await waitFor(() => !!page.doc.getElementById('transcriptHeading'), 'review', 15000);
+    await waitFor(() => !!page.doc.querySelector('.wf-steps'), 'review', 15000);
     expect(text(page, 'h1.page-title')).toBe('Customer call');
 
     // Linked to the calendar meeting; the banner no longer offers it.

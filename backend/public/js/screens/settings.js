@@ -7,7 +7,7 @@
   }
 
   var RETENTION = [
-    ['after_approval', 'Delete after the minutes are approved'],
+    ['after_approval', 'Delete after the minutes are reviewed'],
     ['30_days', 'Delete after 30 days'],
     ['keep', 'Keep until I delete it'],
   ];
@@ -29,7 +29,7 @@
       var picked = box.querySelector('#retention-' + res.rawAudioRetention);
       if (picked) picked.checked = true;
     }).catch(function () { status.textContent = 'Recording isn’t set up on this server.'; });
-    return append(el('div'), box, el('p', 'Minutes, transcripts, and action items are never deleted by this setting. Recordings are visible only to people who use this app on your server.', 'help'), status);
+    return append(el('div'), box, el('p', 'Minutes and transcripts are never deleted by this setting. Recordings are visible only to people who use this app on your server.', 'help'), status);
   }
 
   /** Meeting notetaker (Recall.ai): whether it's set up, and automatic sending to synced meetings. */
@@ -38,7 +38,7 @@
     var box = el('div');
     if (!nt.loaded) return append(box, el('p', 'Loading…', 'help'));
     if (!nt.configured) {
-      return append(box, ui.callout('info', 'circle-help', 'Not set up on this server.', 'Add RECALL_API_KEY (and RECALL_WEBHOOK_SECRET for live status) to the server’s environment, then restart. See docs/NOTETAKER_SETUP.md.'));
+      return append(box, ui.callout('info', 'circle-help', 'The meeting notetaker isn’t available yet.', 'It needs administrator setup. Once it’s set up, you can send it to your Zoom, Teams and Google Meet calls from the calendar.'));
     }
     var on = !!nt.autoSend;
     var sw = el('button', null, 'switch' + (on ? ' is-on' : ''), { type: 'button', role: 'switch', 'aria-checked': on ? 'true' : 'false', id: 'notetakerAuto', 'aria-describedby': 'notetakerAutoHint' });
@@ -51,47 +51,61 @@
   }
 
   function integrations(ctx) {
-    var card = section('Integrations', 'Sync meetings from Google Calendar or Outlook. Read-only: Meeting Assistant never changes your calendar.', MA.cal.integrations(ctx.state, ctx.actions));
+    var card = section('Integrations', 'Bring in upcoming meetings and their participants from your calendar.', MA.cal.integrations(ctx.state, ctx.actions));
     card.querySelector('h2').id = 'integrationsHeading';
     return card;
+  }
+
+  /** The computer's own setting (what "System" follows). */
+  function systemDark() { return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches); }
+  function themeNote(theme) {
+    var now = systemDark() ? 'dark' : 'light';
+    if (theme === 'light') return 'Always bright and white, whatever your computer is set to.';
+    if (theme === 'dark') return 'Always dark, whatever your computer is set to.';
+    return 'Follows your computer (' + now + ' right now): soft grey when it’s light, dark when it’s dark. It switches by itself.';
+  }
+  // When the computer switches light/dark, update the note while Settings is open.
+  if (window.matchMedia) {
+    var mq = window.matchMedia('(prefers-color-scheme: dark)');
+    var onChange = function () {
+      var note = document.getElementById('themeNote');
+      if (note) note.textContent = themeNote(MA.store.get().theme);
+    };
+    if (mq.addEventListener) mq.addEventListener('change', onChange); else if (mq.addListener) mq.addListener(onChange);
   }
 
   MA.screens.settings = {
     title: 'Settings',
     render: function (root, ctx) {
       var s = ctx.state;
-      root.appendChild(ui.pageHeader('Settings', { meta: el('p', 'Appearance and your name are saved in this browser. Integrations and recording settings apply to everyone using this server.', 'meta') }));
+      root.appendChild(ui.pageHeader('Settings', { meta: el('p', 'Appearance is saved in this browser. Integrations and recording settings apply to everyone using this server.', 'meta') }));
 
       var themes = el('div', null, 'segmented', { role: 'radiogroup', 'aria-label': 'Theme' });
       [['system', 'System', 'monitor'], ['light', 'Light', 'sun'], ['dark', 'Dark', 'moon']].forEach(function (t) {
         var input = el('input', null, null, { type: 'radio', name: 'theme', id: 'theme-' + t[0], value: t[0] });
         input.checked = s.theme === t[0];
         input.addEventListener('change', function () { ctx.actions.setTheme(t[0]); });
-        append(themes, input, append(el('label', null, null, { for: 'theme-' + t[0] }), MA.icon(t[2]), t[1]));
+        var text = t[1];
+        append(themes, input, append(el('label', null, null, { for: 'theme-' + t[0] }), MA.icon(t[2]), el('span', text, null, { id: 'themeLabel-' + t[0] })));
       });
-
-      var name = el('input', null, 'input', { id: 'settingsName', type: 'text', placeholder: 'e.g. Million Abate', autocomplete: 'name' });
-      name.value = s.form.reviewer;
-      name.addEventListener('input', function () { store.setForm({ reviewer: name.value }); ctx.actions.refreshShell(); });
+      // System follows the computer's light/dark setting, so it says which one that is right now.
+      var themeHelp = el('p', themeNote(s.theme), 'help theme-note', { id: 'themeNote', 'aria-live': 'polite' });
+      var themeBox = append(el('div'), themes, themeHelp);
 
       var st = s.status;
       var kv = el('dl', null, 'kv');
       if (st && st.providers) {
         append(kv, el('dt', 'Transcription'), el('dd', st.providers.transcription), el('dt', 'Minutes drafting'), el('dd', st.providers.analysis),
-          el('dt', 'Email delivery'), append(el('dd'), ui.badge(st.emailMode === 'draft-only' ? { label: 'Off — draft only', kind: 'neutral' } : { label: 'On', kind: 'success' }), ' ', st.providers.email),
-          el('dt', 'Action item tracker'), el('dd', st.providers.tracker));
+          el('dt', 'Email delivery'), append(el('dd'), ui.badge(st.emailMode === 'draft-only' ? { label: 'Off — draft only', kind: 'neutral' } : { label: 'On', kind: 'success' }), ' ', st.providers.email));
       } else {
         append(kv, el('dt', 'Status'), el('dd', st ? 'Demo data — no real services connected' : 'Loading…'));
       }
 
       root.appendChild(append(el('div', null, 'settings-grid'),
-        section('Appearance', 'Follow your system, or pick light or dark.', themes),
-        section('Your name', 'Shown on your approvals and in the top bar.', append(el('div', null, 'field'), el('label', 'Name', 'label', { for: 'settingsName' }), name)),
+        section('Appearance', 'Follow your system, or pick light or dark.', themeBox),
         integrations(ctx),
         section('Meeting notetaker', 'A bot that joins Zoom, Teams and Google Meet calls, records them, and drafts minutes for your review.', notetaker(ctx)),
         section('Recording and privacy', 'Applies to meetings recorded in the app. Everyone must be told before recording starts.', retention(ctx)),
-        section('People', 'Names and photos shown for meeting participants.',
-          ui.button('Manage people', 'secondary', function () { ctx.actions.go('people'); }, { icon: 'users', id: 'settingsPeople' })),
         section('Connections', 'Set on the server. Restart the server after changing them.', kv)));
     },
   };

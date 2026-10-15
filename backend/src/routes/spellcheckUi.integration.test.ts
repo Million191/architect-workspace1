@@ -7,7 +7,7 @@ import { createPeopleService } from '../services/people/peopleService';
 import { PersonRecord } from '../services/people/types';
 import { createMeetingPipeline, createPipelineStores } from '../services/meetingPipeline/meetingPipelineService';
 import { createDemoProviders } from '../services/meetingPipeline/demoProviders';
-import { openPage, Page, text, waitFor } from './__testutils__/pageHarness';
+import { openPage, Page, text, waitFor, goToStep } from './__testutils__/pageHarness';
 
 /** Spell check while writing: underlines, suggestions, Ignore, Add to dictionary, and the check before approval. */
 function wav(salt: string): Buffer {
@@ -55,7 +55,10 @@ function pointAtRich(page: Page, q: Q, word: string, event: 'click' | 'contextme
   q.setSelection(q.getText().indexOf(word) + 1, 0, 'silent');
   q.root.dispatchEvent(new page.dom.window.MouseEvent(event, { bubbles: true, cancelable: true }));
 }
-async function openReview(page: Page) {
+/** The Summary step in Edit mode (where the minutes editors are), or the step given. */
+async function openReview(page: Page, step = 'summary') {
+  await goToStep(page, step, true);
+  if (step === 'decisions') { await waitFor(() => !!page.doc.querySelector('.ai-row .ai-task'), 'the action items editor'); return editor(page); } // "Action items" step: no rich-text editors
   await waitFor(() => !!editor(page), 'the minutes editor');
   return editor(page);
 }
@@ -97,22 +100,17 @@ describe('Spell check', () => {
     expect(q.getText()).toContain('agred');
   });
 
-  it('plain fields (action items) underline too, and “Add to dictionary” teaches the whole team a word', async () => {
+  it('“Add to dictionary” teaches the whole team a word', async () => {
     const { app, runId } = await server();
     const page = track(openPage(app, `/?run=${runId}&view=review`));
     localStorageReviewer(page);
-    await openReview(page);
-    const task = page.doc.querySelector('[aria-label="Action item 1"]') as HTMLInputElement;
-    expect(task.getAttribute('spellcheck')).toBe('false'); // our underline only, not the browser's too
-    task.focus();
-    task.value = 'Ship Zephyrion next week';
-    task.dispatchEvent(new page.dom.window.Event('input', { bubbles: true }));
-    await waitFor(() => errs(task).join() === 'Zephyrion', 'unknown project name');
-    task.setSelectionRange(7, 7);
-    task.dispatchEvent(new page.dom.window.MouseEvent('click', { bubbles: true }));
+    const q = await openReview(page);
+    typeRich(q, ' Ship Zephyrion next week.');
+    await waitFor(() => issues(q) === 1, 'unknown project name');
+    pointAtRich(page, q, 'Zephyrion', 'click');
     menuItem(page, 'Add to dictionary').click();
     await waitFor(() => text(page, '#toasts').includes('Added “Zephyrion” to the team dictionary'), 'toast');
-    await waitFor(() => errs(task).length === 0, 'now known');
+    await waitFor(() => issues(q) === 0, 'now known');
     expect((await request(app).get('/api/spellcheck/dictionary')).body.words.map((w: { word: string }) => w.word)).toEqual(['Zephyrion']);
   });
 
@@ -123,21 +121,25 @@ describe('Spell check', () => {
     const q = await openReview(page);
     typeRich(q, 'The budjet is final.');
     await waitFor(() => issues(q) === 1, 'flagged');
+    await waitFor(() => text(page, '#saveState') === 'Saved', 'saved', 12000);
 
-    (page.doc.getElementById('primaryAction') as HTMLButtonElement).click();
+    await goToStep(page, 'approval');
+    (page.doc.getElementById('approveMinutes') as HTMLButtonElement).click();
     await waitFor(() => !!page.doc.getElementById('spellAnyway'), 'spelling check dialog', 12000);
     expect(text(page, '[role="dialog"] h2')).toBe('1 possible spelling mistake');
     expect(text(page, '.spell-review-list')).toContain('budjet → budget');
     (page.doc.getElementById('spellReview') as HTMLButtonElement).click();
     expect(page.doc.querySelector('[role="dialog"]')).toBeNull();
     expect(page.calls.filter((c) => c.endsWith('/approve-minutes'))).toHaveLength(0);
-    expect(page.doc.activeElement).toBe(q.root);
+    // Review opens the summary editor (on the Review step) in Edit mode with the flagged editor focused.
+    await waitFor(() => page.doc.getElementById('wfStep-approval')?.getAttribute('aria-current') === 'step' && !!editor(page) && page.doc.activeElement === editor(page).root, 'the flagged editor');
     await new Promise((r) => setTimeout(r, 20)); // the first approval attempt finishes (double-click guard)
 
-    (page.doc.getElementById('primaryAction') as HTMLButtonElement).click();
+    await goToStep(page, 'approval');
+    (page.doc.getElementById('approveMinutes') as HTMLButtonElement).click();
     await waitFor(() => !!page.doc.getElementById('spellAnyway'), 'dialog again');
     (page.doc.getElementById('spellAnyway') as HTMLButtonElement).click();
-    await waitFor(() => text(page, 'h1.page-title') === 'Review and send', 'approved anyway');
+    await waitFor(() => page.doc.getElementById('wfStep-email')?.getAttribute('aria-current') === 'step', 'approved anyway');
     expect(page.calls.filter((c) => c.endsWith('/approve-minutes'))).toHaveLength(1);
     // The email preview underlines what's still misspelled, without changing the email text.
     await waitFor(() => !!page.doc.querySelector('.email-body .spell-err-static'), 'email preview underline');

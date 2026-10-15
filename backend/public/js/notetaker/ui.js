@@ -75,7 +75,7 @@
       sw.disabled = !opts.configured || (s && s.status === 'processing');
       sw.addEventListener('click', function () { opts.onToggle(!on, sw); });
       box.appendChild(append(el('div', null, 'notetaker-row'), sw, append(el('label', null, 'notetaker-label', { for: id }), platformLogo(MA.cal.platformOf(m.link), { decorative: true }), 'Send notetaker')));
-      box.appendChild(el('p', !opts.configured ? 'The notetaker isn’t set up on this server (RECALL_API_KEY).'
+      box.appendChild(el('p', !opts.configured ? 'The notetaker isn’t available yet — it needs administrator setup.'
         : on ? (s.status === 'recording' ? 'Turn off to stop recording. What was recorded becomes minutes for review.' : 'Joins as “Meeting Assistant Notetaker” and tells everyone in the chat that it’s recording.')
           : 'Joins as “Meeting Assistant Notetaker” and tells everyone in the chat that it’s recording.', 'help notetaker-hint', { id: id + '-hint' }));
     }

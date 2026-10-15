@@ -1,4 +1,5 @@
 import { requestRevision } from '../reviewGate/reviewGateService';
+import { dedupeActionItems } from './dedupe';
 import { DraftMinutes } from '../reviewGate/types';
 import { ActionItem } from '../actionItemExtraction/types';
 import { Decision } from '../decisionExtraction/types';
@@ -71,9 +72,11 @@ export function reviseMinutes(stores: MeetingPipelineStores, runId: string, edit
   const session = stores.minutesGate.get(runId);
   if (!session) throw new RunNotFoundError(`No meeting draft found for id "${runId}"`, { runId });
   if (session.status !== 'pending_review') {
-    throw new StageOrderError('These minutes are already approved, so they can no longer be edited.', { runId });
+    throw new StageOrderError('These minutes are already reviewed, so they can no longer be edited.', { runId });
   }
-  const revised = applyEdits(session.draft, edits);
+  const applied = applyEdits(session.draft, edits);
+  // One action item per (task, owner): an edit that makes two rows identical keeps the first.
+  const revised = { ...applied, actionItems: dedupeActionItems(applied.actionItems) };
   if (JSON.stringify(revised) === JSON.stringify(session.draft)) return;
   requestRevision(
     { sessionId: runId, changesRequested: 'Reviewer edited the draft minutes', revisedDraft: revised, requestedBy: editedBy },

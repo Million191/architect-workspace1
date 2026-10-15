@@ -21,7 +21,7 @@
     var m = [];
     if (!form.file || fileProblem(form.file)) m.push('a recording');
     if (!form.attendees.trim()) m.push('participants');
-    if (!form.reviewer.trim()) m.push('your name');
+    if (!form.reviewer.trim()) m.push('the reviewer');
     return m;
   }
 
@@ -92,10 +92,10 @@
       primary.setAttribute('aria-describedby', 'primaryHelp');
       append(right,
         input('title', 'Meeting title', form.title, 'e.g. Project progress', null, function (v) { store.setForm({ title: v }); }),
-        input('attendees', 'Participants', form.attendees, 'Million <million@example.com>, Priya <priya@example.com>',
+        input('attendees', 'Participants', form.attendees, 'Name <name@example.com>, Name <name@example.com>',
           append(el('div'), el('p', 'Name and email, separated by commas. Each person gets their own email draft.', 'help'), hint),
           function (v) { store.setForm({ attendees: v }); updateHint(v); refresh(); }),
-        input('reviewer', 'Your name', form.reviewer, 'Recorded on your approvals', null, function (v) { store.setForm({ reviewer: v }); refresh(); ctx.actions.refreshShell(); }),
+        input('reviewer', 'Reviewer', form.reviewer, 'Name of the person reviewing the minutes', null, function (v) { store.setForm({ reviewer: v }); refresh(); ctx.actions.refreshShell(); }),
         why);
       updateHint(form.attendees);
       MA.spell.attach(right.querySelector('#title'));

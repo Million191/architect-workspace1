@@ -76,10 +76,16 @@
    * Typing never re-renders; structural changes (add/move/delete) call ctx.redraw().
    */
   function render(host, ctx) {
-    var st = MA.minutes.get(), content = st.content, editable = ctx.editable;
+    var st = MA.minutes.get(), content = st.content;
     Object.keys(editors).forEach(function (k) { delete editors[k]; });
     var list = el('div', null, 'md-sections', { role: 'list', 'aria-label': 'Minutes sections' });
+    // Positions among the sections this step shows, so Move up/down never swaps with a hidden one.
+    var shown = content.sections.map(function (s, i) { return i; }).filter(function (i) { return !ctx.filter || ctx.filter(content.sections[i]); });
     content.sections.forEach(function (s, i) {
+      if (ctx.filter && !ctx.filter(s)) return; // a workflow step shows only its own sections (indexes stay the document's)
+      var at = shown.indexOf(i), prev = shown[at - 1], next = shown[at + 1];
+      // One section can be edited on its own (its ✏ Edit), or all of them (the step's Edit Summary).
+      var editable = ctx.editableFor ? ctx.editableFor(s) : ctx.editable;
       var edited = MA.review.sections.isEdited(s);
       var card = el('section', null, 'card md-section', { role: 'listitem', 'data-id': s.id, 'aria-labelledby': 'mdTitle-' + s.id });
       var title = el('input', null, 'input inline md-title', { id: 'mdTitle-' + s.id, type: 'text', maxlength: '200', 'aria-label': 'Section title', placeholder: 'Section title' });
@@ -87,14 +93,15 @@
       title.readOnly = !editable;
       title.addEventListener('input', function () { MA.minutes.edit(function (c) { c.sections[i].title = title.value; }); markEdited(card); });
       var head = append(el('div', null, 'md-section-head'),
-        editable ? el('button', '⠿', 'md-handle', { type: 'button', 'aria-label': 'Reorder ' + (s.title || 'section') + ' (use Move up / Move down)', title: 'Drag to reorder', draggable: 'true' }) : null,
+        editable && ctx.editable ? el('button', '⠿', 'md-handle', { type: 'button', 'aria-label': 'Reorder ' + (s.title || 'section') + ' (use Move up / Move down)', title: 'Drag to reorder', draggable: 'true' }) : null,
         title,
         edited ? el('span', 'Edited', 'badge badge-accent md-edited') : null,
         typeof s.startMs === 'number' ? (function () { var b = el('button', ui.clock(s.startMs), 'time-link', { type: 'button', 'aria-label': 'Show transcript at ' + ui.clock(s.startMs) }); b.addEventListener('click', function () { ctx.jump(s.startMs); }); return b; })() : null,
         ctx.extraHead ? ctx.extraHead(s, i) : null,
-        editable ? append(el('div', null, 'md-section-actions'),
-          ui.button(null, 'ghost', function () { if (i > 0) { MA.minutes.edit(function (c) { move(c.sections, i, i - 1); }); ctx.redraw('mdTitle-' + s.id, (s.title || 'Section') + ' moved up'); } }, { icon: 'arrow-up', size: 'sm', ariaLabel: 'Move ' + (s.title || 'section') + ' up', disabled: i === 0 }),
-          ui.button(null, 'ghost', function () { if (i < content.sections.length - 1) { MA.minutes.edit(function (c) { move(c.sections, i, i + 1); }); ctx.redraw('mdTitle-' + s.id, (s.title || 'Section') + ' moved down'); } }, { icon: 'arrow-down', size: 'sm', ariaLabel: 'Move ' + (s.title || 'section') + ' down', disabled: i === content.sections.length - 1 }),
+        ctx.sectionTools ? ctx.sectionTools(s, editable) : null,
+        editable && ctx.editable ? append(el('div', null, 'md-section-actions'),
+          ui.button(null, 'ghost', function () { if (prev !== undefined) { MA.minutes.edit(function (c) { move(c.sections, i, prev); }); ctx.redraw('mdTitle-' + s.id, (s.title || 'Section') + ' moved up'); } }, { icon: 'arrow-up', size: 'sm', ariaLabel: 'Move ' + (s.title || 'section') + ' up', disabled: prev === undefined }),
+          ui.button(null, 'ghost', function () { if (next !== undefined) { MA.minutes.edit(function (c) { move(c.sections, i, next); }); ctx.redraw('mdTitle-' + s.id, (s.title || 'Section') + ' moved down'); } }, { icon: 'arrow-down', size: 'sm', ariaLabel: 'Move ' + (s.title || 'section') + ' down', disabled: next === undefined }),
           ui.button(null, 'ghost', function () { removeSection(s, i, ctx); }, { icon: 'trash', size: 'sm', ariaLabel: 'Delete ' + (s.title || 'section') })) : null);
       var box = el('div', null, 'md-editor');
       card.appendChild(head);
@@ -113,11 +120,12 @@
           markEdited(card);
         });
         MA.spell.attachRich(q, s.title || 'section');
-        dragAndDrop(card, s, i, ctx);
+        if (ctx.editable) dragAndDrop(card, s, i, ctx);
       }
     });
     host.appendChild(list);
-    if (editable) host.appendChild(addSectionButton(ctx));
+    if (!list.childNodes.length) list.appendChild(append(el('p', null, 'empty-inline'), MA.icon('circle-check'), ctx.noAdd ? 'No decisions were recorded.' : 'No sections.'));
+    if (ctx.editable && !ctx.noAdd) host.appendChild(addSectionButton(ctx));
   }
 
   function markEdited(card) {
@@ -148,7 +156,7 @@
   }
 
   function addSectionButton(ctx) {
-    var items = ['summary', 'next_steps', 'notes', 'decisions', 'custom'].map(function (kind) {
+    var items = ['summary', 'next_steps', 'notes', 'custom'].map(function (kind) {
       return { label: KIND_TITLES[kind], icon: 'plus', run: function () {
         var id = MA.minutes.newId();
         MA.minutes.edit(function (c) { c.sections.push({ id: id, kind: kind, title: KIND_TITLES[kind], html: '' }); });
@@ -163,7 +171,12 @@
   /** Appends a quote or note (from the transcript) to a section, as an edit. */
   function appendTo(sectionId, html) {
     var q = editors[sectionId];
-    if (!q) return false;
+    if (!q) {
+      // The section isn't on screen (e.g. adding from the Transcript step): append to the saved content.
+      if (!MA.minutes.editable() || !MA.minutes.get().content.sections.some(function (s) { return s.id === sectionId; })) return false;
+      MA.minutes.edit(function (c) { var sec = c.sections.find(function (s) { return s.id === sectionId; }); sec.html = (sec.html || '') + html; });
+      return true;
+    }
     var Delta = window.Quill.import('delta'), at = q.getLength(), empty = !q.getText().trim();
     var delta = q.clipboard.convert({ html: html });
     // Start a new line first, so the quote never merges into the last paragraph.

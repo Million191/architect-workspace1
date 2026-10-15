@@ -14,6 +14,35 @@ const STATE_TTL_MS = 10 * 60 * 1000;
 const EMAIL = /^[^@\s<>,;]+@[^@\s<>,;]+\.[^@\s<>,;]+$/;
 export const DEFAULT_OPTIONS: SyncOptions = { skipAllDay: true, skipSolo: true };
 
+/** What the page says when calendar sync can't run because the server isn't set up (details go to the logs). */
+export const NOT_AVAILABLE_MESSAGE = 'Calendar integration isn’t available yet — it needs administrator setup.';
+
+/**
+ * A failure as the user should read it: what happened and what to do, never a token, secret, env
+ * variable or raw provider error. `action` tells the page which button to offer.
+ */
+export function friendlyError(provider: CalendarProvider, errorClass: string): { message: string; action: 'reconnect' | 'retry' } {
+  const name = PROVIDER_LABEL[provider];
+  switch (errorClass) {
+    case 'AuthError': return { message: `Your ${name} sign-in has expired or was removed. Reconnect to keep syncing.`, action: 'reconnect' };
+    case 'TokenKeyError':
+    case 'NotConfigured': return { message: NOT_AVAILABLE_MESSAGE, action: 'retry' };
+    case 'RateLimitError': return { message: `${name} is busy right now. Try again in a few minutes.`, action: 'retry' };
+    case 'UpstreamUnavailable':
+    case 'TimeoutError': return { message: `${name} didn’t respond. Check the connection and try again.`, action: 'retry' };
+    default: return { message: `Calendar sync failed. Try again.`, action: 'retry' };
+  }
+}
+
+/** Server-side: which settings are missing (names only, never values) — for the startup log. */
+export function missingSetup(config: OAuthConfig, encryptionKey?: string): string[] {
+  const missing: string[] = [];
+  try { parseKey(encryptionKey); } catch { missing.push('TOKEN_ENCRYPTION_KEY'); }
+  if (!config.google) missing.push('GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET');
+  if (!config.microsoft) missing.push('MS_CLIENT_ID/MS_CLIENT_SECRET');
+  return missing;
+}
+
 export class CalendarSyncError extends Error {
   constructor(readonly errorClass: 'NotConfigured' | 'NotConnected' | 'InvalidState' | 'ValidationError', message: string) {
     super(message);
@@ -54,7 +83,10 @@ export function createCalendarSyncService(deps: CalendarSyncDeps) {
   }
   function client(provider: CalendarProvider) {
     const c = clientFor(provider, deps.config, deps.fetchImpl);
-    if (!c) throw new CalendarSyncError('NotConfigured', `${PROVIDER_LABEL[provider]} isn’t set up on this server yet. Add its client id and secret (see docs/CALENDAR_SYNC_SETUP.md).`);
+    if (!c) {
+      console.error(JSON.stringify({ event: 'calendar_not_configured', provider, missing: provider === 'google' ? 'GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET' : 'MS_CLIENT_ID/MS_CLIENT_SECRET', outcome: 'failure' }));
+      throw new CalendarSyncError('NotConfigured', NOT_AVAILABLE_MESSAGE);
+    }
     return c;
   }
   function connection(provider: CalendarProvider): CalendarConnection {
@@ -62,9 +94,12 @@ export function createCalendarSyncService(deps: CalendarSyncDeps) {
     if (!c) throw new CalendarSyncError('NotConnected', `${PROVIDER_LABEL[provider]} isn’t connected.`);
     return c;
   }
+  /** What the page may see: no tokens, and errors in plain words (the raw details stay in the logs). */
   function toPublic(c: CalendarConnection): PublicConnection {
     const { sealedTokens: _t, ...rest } = c;
-    return rest;
+    if (!rest.lastError) return rest;
+    const f = friendlyError(c.provider, rest.lastError.errorClass);
+    return { ...rest, lastError: { errorClass: rest.lastError.errorClass, at: rest.lastError.at, message: f.message, needsReconnect: f.action === 'reconnect' } };
   }
   function save(c: CalendarConnection): void {
     deps.store.set(c.provider, c);
@@ -117,8 +152,12 @@ export function createCalendarSyncService(deps: CalendarSyncDeps) {
           if (e.allDay || (c.options.skipSolo && !people.length && !e.cancelled)) { summary.skipped++; continue; }
           kept.add(e.id);
           const participants = e.attendees.filter((a) => !a.resource && EMAIL.test(a.email)).map((a) => ({ email: a.email, name: a.name && a.name !== a.email ? a.name.replace(/[<>\r\n]/g, '') : undefined }));
+          // The organizer is a participant too (Google may leave them out of the attendee list).
+          const org = e.attendees.find((a) => a.organizer && EMAIL.test(a.email));
+          if (org && !participants.some((p) => p.email.toLowerCase() === org.email.toLowerCase())) participants.unshift({ email: org.email, name: org.name && org.name !== org.email ? org.name.replace(/[<>\r\n]/g, '') : undefined });
+          const organizer = org ? { email: org.email, ...(org.name && org.name !== org.email ? { name: org.name.replace(/[<>\r\n]/g, '') } : {}) } : undefined;
           const result = deps.schedule?.upsertExternal(
-            { title: e.title.slice(0, 200), start: new Date(e.start).toISOString(), end: new Date(e.end).toISOString(), participants, link: e.link, agenda: stripHtml(e.description) },
+            { title: e.title.slice(0, 200), start: new Date(e.start).toISOString(), end: new Date(e.end).toISOString(), participants, link: e.link, agenda: stripHtml(e.description), organizer },
             { provider, calendarId, eventId: e.id, updated: e.updated }, e.cancelled) ?? 'unchanged';
           summary[result]++;
           if (deps.people && !e.cancelled) {
@@ -143,20 +182,22 @@ export function createCalendarSyncService(deps: CalendarSyncDeps) {
     } catch (error) {
       const e = error as Error & { errorClass?: string };
       const errorClass = e instanceof TokenKeyError ? 'TokenKeyError' : e.errorClass ?? 'Error';
-      save({ ...connection(provider), lastError: { errorClass, message: e.message, at: now().toISOString(), needsReconnect: errorClass === 'AuthError' || errorClass === 'TokenKeyError' } });
+      console.error(JSON.stringify({ event: 'calendar_sync_failed', provider, error_class: errorClass, outcome: 'failure' }));
+      save({ ...connection(provider), lastError: { errorClass, message: e.message, at: now().toISOString(), needsReconnect: errorClass === 'AuthError' } });
       throw error;
     }
   }
 
   return {
+    /** For the page: which calendars can be connected, and the connections (no tokens, no setup details). */
     status() {
-      let encryption = true, encryptionProblem: string | undefined;
-      try { key(); } catch (e) { encryption = false; encryptionProblem = (e as Error).message; }
+      let encryption = true;
+      try { key(); } catch { encryption = false; }
       const providers = (['google', 'microsoft'] as CalendarProvider[]).map((p) => ({
         provider: p, label: PROVIDER_LABEL[p], configured: !!clientFor(p, deps.config, deps.fetchImpl) && encryption,
         connection: deps.store.get(p) ? toPublic(deps.store.get(p) as CalendarConnection) : undefined,
       }));
-      return { providers, encryption, encryptionProblem };
+      return { providers, available: providers.some((p) => p.configured) };
     },
 
     /** Start of the OAuth flow: a one-time state + PKCE verifier kept server-side for 10 minutes. */
@@ -217,7 +258,8 @@ export function createCalendarSyncService(deps: CalendarSyncDeps) {
         if (!run) { run = syncOne(p).finally(() => inFlight.delete(p)); inFlight.set(p, run); }
         try { out[p] = await run; } catch (e) {
           const err = deps.store.get(p)?.lastError;
-          out[p] = { error: (e as Error).message, errorClass: err?.errorClass ?? 'Error', needsReconnect: err?.needsReconnect };
+          const f = friendlyError(p, err?.errorClass ?? (e as { errorClass?: string }).errorClass ?? 'Error');
+          out[p] = { error: f.message, errorClass: err?.errorClass ?? 'Error', needsReconnect: f.action === 'reconnect' };
         }
       }
       return out;

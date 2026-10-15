@@ -11,6 +11,7 @@ import { extractActionItems } from '../actionItemExtraction/actionItemExtraction
 import { submitForReview } from '../reviewGate/reviewGateService';
 import { ProviderNotConfiguredError } from './errors';
 import { runStage } from './runStage';
+import { dedupeActionItems, ExistingRun, findDuplicateRun } from './dedupe';
 import { DraftMinutesInput, MeetingPipelineProviders, MeetingPipelineStores } from './types';
 
 /** Upload problems the route reports as 422 rather than as a failed pipeline stage. */
@@ -55,6 +56,15 @@ export function speakerTurnClients(turns: NonNullable<DraftMinutesInput['speaker
  * file re-uses earlier results. If those minutes were already approved, the existing run id is
  * returned rather than re-opening a decided gate. Returns the run id (== transcriptId).
  */
+/** Every meeting the stores know about, with what duplicate detection compares (title, date, time). */
+export function existingRuns(stores: MeetingPipelineStores): ExistingRun[] {
+  const ids = new Set<string>([...stores.minutesGate.keys(), ...stores.finalApprovals.keys()]);
+  return [...ids].map((runId) => {
+    const summary = stores.finalApprovals.get(runId)?.minutes?.meetingSummary ?? stores.minutesGate.get(runId)?.draft.meetingSummary;
+    return { runId, title: summary?.title, date: summary?.date, time: summary?.time };
+  });
+}
+
 export async function draftMinutesFromAudio(
   input: DraftMinutesInput,
   providers: MeetingPipelineProviders,
@@ -82,6 +92,13 @@ export async function draftMinutesFromAudio(
   // Transcript ids equal audio ids, so the run id is known as soon as the audio is ingested.
   if (stores.finalApprovals.get(audio.id)?.minutes) {
     return audio.id;
+  }
+  // The same file uploaded under another source (room mic / phone), or the same title at the same
+  // scheduled start: that meeting already exists — open it instead of making a second one.
+  const duplicate = findDuplicateRun(existingRuns(stores), { runId: audio.id, title: input.meetingContext?.title, scheduledAt: input.meetingContext?.scheduledAt });
+  if (duplicate) {
+    console.log(JSON.stringify({ event: 'duplicate_meeting_upload', runId: duplicate, outcome: 'success' }));
+    return duplicate;
   }
   const transcript = await stage(audio.id, 'transcription', () =>
     transcribeAudio(audio.id, audio.format, input.buffer, { client: providers.transcriptionClient, idempotencyStore: stores.transcripts, ...transcription })
@@ -131,7 +148,7 @@ export async function draftMinutesFromAudio(
           meetingSummary,
           discussionTopics: discussion.topics,
           decisions: decisions.decisions,
-          actionItems: actionItems.actionItems,
+          actionItems: dedupeActionItems(actionItems.actionItems),
         },
       },
       { sessionStore: stores.minutesGate }

@@ -16,6 +16,31 @@
     }
     return parent;
   }
+  /**
+   * Every button is double-submit safe:
+   * - the second click of a double-click (the browser marks it with event.detail ≥ 2) is ignored;
+   * - while a handler's returned promise is pending, the button is disabled (aria-busy) so it can't fire again.
+   * opts.repeatable keeps double-clicks working where repeating is the point (e.g. "next week" arrows).
+   * Identical requests are also merged in core/api.js, and the server ignores duplicates.
+   */
+  function guarded(b, onClick, opts) {
+    return function (e) {
+      if (b.getAttribute('aria-busy') === 'true' || (!opts.repeatable && e.detail >= 2)) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        return;
+      }
+      var result = onClick.call(this, e);
+      if (result && typeof result.then === 'function') {
+        var wasDisabled = b.disabled;
+        b.setAttribute('aria-busy', 'true');
+        b.disabled = true;
+        var done = function () { b.removeAttribute('aria-busy'); b.disabled = wasDisabled; };
+        result.then(done, done);
+      }
+      return result;
+    };
+  }
   function button(label, variant, onClick, opts) {
     opts = opts || {};
     var b = el('button', null, 'btn btn-' + (variant || 'secondary') + (opts.size ? ' btn-' + opts.size : ''));
@@ -26,7 +51,7 @@
     if (opts.id) b.id = opts.id;
     if (opts.ariaLabel) b.setAttribute('aria-label', opts.ariaLabel);
     if (opts.disabled) b.disabled = true;
-    if (onClick) b.addEventListener('click', onClick);
+    if (onClick) b.addEventListener('click', guarded(b, onClick, opts));
     return b;
   }
   /** Status badge: icon + text (the icon is decorative; the text is what's read). */

@@ -1,7 +1,7 @@
 // Meeting Assistant — controller: routing, data loading, and every action that talks to the server.
 (function () {
   var store = MA.store, ui = MA.ui, api = MA.api;
-  var PAGES = ['meetings', 'upload', 'processing', 'review', 'send', 'action-items', 'people', 'settings', 'record'];
+  var PAGES = ['meetings', 'upload', 'processing', 'review', 'send', 'people', 'settings', 'record']; // 'action-items' page retired (data kept on the server)
   /**
    * Screens redrawn when the People list arrives. Review and send are left alone: redrawing an open
    * meeting would wipe edits in progress (they pick up names on their next render).
@@ -16,8 +16,12 @@
   function syncUrl(s) {
     try {
       var url = new URL(window.location.href);
-      ['page', 'run', 'view'].forEach(function (k) { url.searchParams.delete(k); });
-      if ((s.page === 'review' || s.page === 'send') && s.run) { url.searchParams.set('run', s.run.runId); url.searchParams.set('view', s.page); }
+      ['page', 'run', 'view', 'step'].forEach(function (k) { url.searchParams.delete(k); });
+      if ((s.page === 'review' || s.page === 'send') && s.run) {
+        url.searchParams.set('run', s.run.runId);
+        url.searchParams.set('view', s.page);
+        if (s.page === 'review') url.searchParams.set('step', MA.workflow.current(s));
+      }
       else if (s.page !== 'meetings' && s.page !== 'processing') url.searchParams.set('page', s.page);
       window.history.replaceState(null, '', url.toString());
     } catch (e) { /* convenience only */ }
@@ -50,7 +54,7 @@
     if (pagesThatShowIt.indexOf(store.get().page) !== -1) store.set({}); else MA.shell.render(store.get(), actions);
   }
   function loadLists() {
-    var lists = ['meetings', 'action-items'];
+    var lists = ['meetings', 'action-items', 'people']; // the People page shows each person's meetings and action items
     api.meetings().then(function (m) { setBackground({ meetings: m }, lists); }).catch(function () { setBackground({ meetings: [] }, lists); });
     api.actionItems().then(function (a) { setBackground({ actionItems: a }, lists); }).catch(function () { setBackground({ actionItems: [] }, lists); });
     actions.calLoadSummary(); // also refreshes the dashboard's Meetings count
@@ -84,13 +88,23 @@
       if (page === 'people') loadPeople();
     },
     /** opts.focusMs: open the review at that moment of the transcript (from a transcript search result). */
+    /**
+     * opts: { focusMs (open the transcript at that moment), step (a workflow step), edit (open it in Edit mode) }.
+     * Without a step, an unapproved meeting resumes where the reviewer left off; an approved one opens its email.
+     */
     openMeeting: function (runId, view, opts) {
-      return api.getRun(runId).then(function (run) {
-        var page = view === 'review' || view === 'send' ? view : run.stage === 'minutes_pending_approval' ? 'review' : 'send';
-        store.set({ run: run, page: page, selectedRecipient: 0, save: { state: 'idle' }, notice: null, focusMs: opts && typeof opts.focusMs === 'number' ? opts.focusMs : null });
+      opts = opts || {};
+      return flushSave().catch(function () { /* the toast explains */ }).then(function () { return api.getRun(runId); }).then(function (run) {
+        var focus = typeof opts.focusMs === 'number' ? opts.focusMs : null;
+        var step = opts.step || (focus !== null ? 'transcript' : view === 'send' ? 'email' : MA.workflow.landing(run));
+        if (!MA.workflow.canOpen(run, step)) step = MA.workflow.landing(run);
+        if (step !== 'email') MA.workflow.reach(run.runId, step);
+        if (MA.review.steps) MA.review.steps.reset();
+        store.set({ run: run, page: step === 'email' ? 'send' : 'review', reviewStep: step === 'email' ? null : step, editing: opts.edit && step !== 'email' && step !== 'approval' ? step : null,
+          selectedRecipient: 0, save: { state: 'idle' }, notice: null, focusMs: focus, highlightMs: null });
       }).catch(function (err) {
         store.set({ page: 'meetings' });
-        ui.toast(err.status === 404 ? 'That meeting isn’t available anymore. Meetings that weren’t approved are cleared when the server restarts.' : err.message, 'error');
+        ui.toast(err.status === 404 ? 'That meeting isn’t available anymore. Meetings that weren’t reviewed are cleared when the server restarts.' : err.message, 'error');
       });
     },
     search: function (q, opts) {
@@ -148,7 +162,7 @@
         });
         stopPolling();
         store.set({ busy: false, run: run, upload: { id: null, sentFraction: 0, stage: null, error: null, failedStage: null, startedAt: null },
-          page: run.stage === 'minutes_pending_approval' ? 'review' : 'send', save: { state: 'idle' }, selectedRecipient: 0 });
+          page: run.stage === 'minutes_pending_approval' ? 'review' : 'send', reviewStep: 'meeting', editing: null, save: { state: 'idle' }, selectedRecipient: 0 });
         ui.toast(run.stage === 'minutes_pending_approval' ? 'Draft minutes are ready for your review' : 'This recording was already processed — opened its meeting');
         loadLists();
       } catch (err) {
@@ -191,17 +205,17 @@
       var error = ui.el('p', '', 'help help-error', { role: 'alert' });
       var go = ui.button('Start editing', 'primary', function () {
         var reason = input.value.trim();
-        if (reason.length < 3) { error.textContent = 'Say briefly why the approved minutes are being changed.'; input.focus(); return; }
+        if (reason.length < 3) { error.textContent = 'Say briefly why the reviewed minutes are being changed.'; input.focus(); return; }
         if (!reviewer()) { error.textContent = 'Add your name in Settings first — it’s recorded on the change.'; return; }
         go.disabled = true;
         api.minutes.amend(store.get().run.runId, { reason: reason, editedBy: reviewer() }).then(function (view) {
           MA.cal.dialog.close();
           MA.minutes.replace(view);
-          ui.toast('Editing approved minutes — changes are saved as a new version');
+          ui.toast('Editing reviewed minutes — changes are saved as a new version');
           actions.redrawReview();
         }).catch(function (err) { go.disabled = false; error.textContent = err.message; });
       }, { id: 'amendStart' });
-      MA.cal.dialog.open({ title: 'Edit approved minutes', variant: 'dialog', initialFocus: '#amendReason',
+      MA.cal.dialog.open({ title: 'Edit reviewed minutes', variant: 'dialog', initialFocus: '#amendReason',
         body: ui.append(ui.el('div', null, 'field'), ui.el('label', 'Why are you changing them?', 'label', { for: 'amendReason' }), input, ui.el('p', 'Shown in the version history and in the updated email to participants.', 'help'), error),
         actions: [ui.button('Cancel', 'secondary', function () { MA.cal.dialog.close(); }), go] });
     },
@@ -222,7 +236,16 @@
     /** People list edit: saves, refreshes everyone's names/avatars, confirms with a toast. */
     savePerson: function (id, edit) {
       return api.people.update(id, edit).then(function (res) {
-        ui.toast('Saved ' + res.person.name);
+        var n = res.syncedMeetings || 0;
+        ui.toast('Saved ' + res.person.name + (n ? ' — also updated in ' + n + ' meeting' + (n === 1 ? '' : 's') + ' not yet emailed' : ''));
+        if (edit.email || n) loadLists(); // the corrected address / name is now in the meetings that use it
+        return loadPeople();
+      });
+    },
+    /** "+ Add person" on the People page. */
+    addPerson: function (person) {
+      return api.people.add(person).then(function (res) {
+        ui.toast('Added ' + res.person.name);
         return loadPeople();
       });
     },
@@ -235,6 +258,17 @@
     },
 
     approveMinutes: function () { return approve('minutes'); },
+    /** Save changes on "Edit email": the draft on the server changes (Gate #2's revision history). */
+    saveEmail: function () {
+      var s = store.get(), d = MA.screens.send.draft(), err = document.getElementById('emailError');
+      if (!s.run || !d) return Promise.resolve();
+      if (!d.subject.trim() || !d.body.trim()) { if (err) err.textContent = 'The subject and the email can’t be empty.'; return Promise.resolve(); }
+      return api.saveEmails(s.run.runId, [{ participantName: d.name, subject: d.subject.trim(), body: d.body.trim() }], reviewer() || undefined).then(function (run) {
+        MA.screens.send.clearDraft();
+        store.set({ run: run, editing: null });
+        ui.toast('Email saved');
+      }).catch(function (e) { if (err) err.textContent = e.message; else ui.toast(e.message, 'error'); });
+    },
     approveEmails: function () { return approve('emails'); },
   };
 
@@ -246,8 +280,6 @@
     if (MA.minutes.get() && MA.minutes.get().runId === run.runId) return MA.minutes.texts();
     var m = run.minutes, out = [];
     m.discussionTopics.forEach(function (t) { out.push({ where: 'Summary: ' + t.topic, text: t.topic + '. ' + t.summary }); });
-    m.decisions.forEach(function (d, i) { out.push({ where: 'Decision ' + (i + 1), text: d.decision + '. ' + (d.rationale || '') }); });
-    m.actionItems.forEach(function (a, i) { out.push({ where: 'Action item ' + (i + 1), text: a.task }); });
     return out;
   }
 
@@ -274,8 +306,14 @@
         var body = ui.append(ui.el('div'), ui.el('p', which === 'emails' ? 'Check the email before it goes out. Nothing has been changed.' : 'Check the minutes before approving. Nothing has been changed.', 'help'), list);
         var review = ui.button('Review', 'secondary', function () {
           finish(false);
-          var target = which === 'emails' ? document.getElementById('emailPreview') : document.querySelector('.ql-editor[data-spelling-issues]:not([data-spelling-issues="0"]), .has-spelling-issues');
-          if (target) { if (target.scrollIntoView) target.scrollIntoView({ block: 'center' }); if (target.focus) target.focus(); }
+          function focusIssue() {
+            var target = which === 'emails' ? document.getElementById('emailPreview') : document.querySelector('.ql-editor[data-spelling-issues]:not([data-spelling-issues="0"]), .has-spelling-issues') || document.querySelector('.minutes-panel .ql-editor[contenteditable="true"]');
+            if (target) { if (target.scrollIntoView) target.scrollIntoView({ block: 'center' }); if (target.focus) target.focus(); }
+          }
+          if (which === 'emails') { focusIssue(); return; }
+          // The minutes are edited on their own steps: open the one with the mistakes, in Edit mode.
+          // The summary is edited on the Review step.
+          actions.goStep('approval').then(function () { actions.startEdit('summary'); setTimeout(focusIssue, 0); });
         }, { id: 'spellReview' });
         var anyway = ui.button(which === 'emails' ? (run.emailMode === 'draft-only' ? 'Approve anyway' : 'Send anyway') : 'Approve anyway', 'primary', function () { finish(true); }, { id: 'spellAnyway' });
         MA.cal.dialog.open({ title: found.length + ' possible spelling mistake' + (found.length === 1 ? '' : 's'), body: body, actions: [review, anyway], variant: 'dialog', initialFocus: '#spellReview', onClose: function () { finish(false); } });
@@ -290,8 +328,9 @@
   async function approve(which) {
     var s = store.get();
     if (approving || s.busy || !s.run) return; // blocks double clicks
-    if (!reviewer()) {
-      ui.toast('Add your name in Settings before approving — it’s recorded on the approval.', 'error');
+    var sendDialog = which === 'emails' && s.run.emailMode !== 'draft-only' && !!s.run.emails; // asks for the name itself
+    if (!reviewer() && !sendDialog) {
+      ui.toast('Set the reviewer name first (top right) — it’s recorded on the approval.', 'error');
       return;
     }
     approving = true;
@@ -300,20 +339,43 @@
       if (which === 'minutes') await flushSave();
     } catch (err) {
       approving = false;
-      ui.toast('The minutes couldn’t be saved, so nothing was approved. ' + err.message, 'error');
+      ui.toast('The minutes couldn’t be saved, so nothing was reviewed. ' + err.message, 'error');
       return;
     }
     if (which === 'minutes' && MA.minutes.get() && MA.minutes.get().status === 'conflict') { approving = false; ui.toast('Someone else changed these minutes. Reload before approving.', 'error'); return; }
     s = store.get();
     var proceed = await spellingGate(which, s.run);
     if (!proceed) { approving = false; return; }
+    // Real sending: one last confirmation listing who gets the email (the dialog guards its own double clicks).
+    if (which === 'emails' && s.run.emailMode !== 'draft-only' && s.run.emails) {
+      approving = false;
+      var runId = s.run.runId, sentBefore = (s.run.sentTo || []).length;
+      MA.review.sendDialog.open({
+        run: s.run,
+        send: function (names) {
+          store.quiet({ busy: true });
+          return api.approveEmails(runId, reviewer() || 'Reviewer', names).then(function (run) { store.quiet({ busy: false }); return run; }, function (err) {
+            store.quiet({ busy: false });
+            return api.getRun(runId).then(function (fresh) { store.quiet({ run: fresh }); throw err; }, function () { throw err; });
+          });
+        },
+        onSent: function (run, names) {
+          var more = sentBefore > 0, n = more ? (names || []).length : (run.sentTo || []).length;
+          store.set({ run: run, page: 'send', editing: null });
+          ui.toast('Minutes sent to ' + n + (more ? ' more' : '') + ' participant' + (n === 1 ? '' : 's'));
+          loadLists();
+        },
+      });
+      return;
+    }
     store.set({ busy: true, notice: null });
     try {
       var run = which === 'minutes' ? await api.approveMinutes(s.run.runId, reviewer()) : await api.approveEmails(s.run.runId, reviewer());
       if (MA.minutes.get() && MA.minutes.get().runId === run.runId) await MA.minutes.load(run.runId); // now read-only
-      store.set({ busy: false, run: run, page: 'send' });
-      if (which === 'minutes') ui.toast('Minutes approved — review the email next');
-      else ui.toast(run.emailMode === 'draft-only' ? 'Minutes approved — email not sent (draft-only mode)' : 'Minutes sent to ' + (run.sentTo || []).length + ' participant' + ((run.sentTo || []).length === 1 ? '' : 's'));
+      if (which === 'minutes') MA.workflow.reach(run.runId, 'email');
+      store.set({ busy: false, run: run, page: 'send', editing: null });
+      if (which === 'minutes') ui.toast('Minutes reviewed — review the email next');
+      else ui.toast(run.emailMode === 'draft-only' ? 'Minutes reviewed — email not sent (draft-only mode)' : 'Minutes sent to ' + (run.sentTo || []).length + ' participant' + ((run.sentTo || []).length === 1 ? '' : 's'));
       loadLists();
     } catch (err) {
       var fresh = null;
@@ -330,6 +392,7 @@
   MA.dashboard.attachStats(actions, store, api);
   MA.dashboard.attachTable(actions, store, api);
   MA.dashboard.attachActivity(actions, store, api);
+  MA.workflow.attach(actions, store, api, { loadLists: loadLists });
   MA.cal.attach(actions, store, api);
   MA.cal.attachAdd(actions, store, api);
   MA.cal.attachRecording(actions, store, api);
@@ -346,7 +409,7 @@
   actions.recFindUnfinished();
   if (params.get('run')) {
     var view = params.get('view');
-    actions.openMeeting(params.get('run'), view === 'email' || view === 'complete' ? 'send' : view);
+    actions.openMeeting(params.get('run'), view === 'email' || view === 'complete' ? 'send' : view, view === 'review' && params.get('step') ? { step: params.get('step') } : undefined);
   }
   MA.app = { actions: actions };
 })();

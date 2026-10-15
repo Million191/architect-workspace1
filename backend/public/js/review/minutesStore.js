@@ -30,13 +30,16 @@
 
   function save() {
     if (!state || !state.dirty) return inFlight || Promise.resolve();
+    if (state.reopening) return Promise.reject(new Error('Choose Save changes (the minutes will need approval again) or Cancel first.'));
     if (inFlight) return inFlight.then(save);
     clearTimeout(timer);
     var runId = state.runId, sent = copy(state.content), sentAt = state.changeCount;
     setStatus('saving');
-    inFlight = MA.api.minutes.save(runId, { content: plain(sent), baseRevision: state.view.revision, editedBy: (MA.store.get().form.reviewer || '').trim() })
+    var fresh = !!state.newVersionNext;
+    inFlight = MA.api.minutes.save(runId, Object.assign({ content: plain(sent), baseRevision: state.view.revision, editedBy: (MA.store.get().form.reviewer || '').trim() }, fresh ? { newVersion: true } : {}))
       .then(function (view) {
         inFlight = null;
+        if (fresh && state && state.runId === runId) state.newVersionNext = false; // later saves in this session fold into it
         if (!state || state.runId !== runId) return;
         state.view = view;
         if (state.changeCount === sentAt) { state.dirty = false; state.content = copy(view.content); clearBackup(runId); setStatus('saved', { error: null }); }
@@ -54,6 +57,8 @@
   function schedule() { clearTimeout(timer); timer = setTimeout(function () { save().catch(function () { /* status shows the problem */ }); }, SAVE_DELAY_MS); }
 
   MA.minutes = {
+    /** Edit was chosen: the next save starts a new version, so the text from before this edit stays in the history. */
+    startSession: function () { if (state) state.newVersionNext = true; },
     /** Loads the document; restores unsaved changes kept in this browser when they still apply. */
     load: function (runId) {
       return MA.api.minutes.get(runId).then(function (view) {
@@ -79,9 +84,31 @@
       state.dirty = true;
       state.changeCount++;
       backup();
-      if (state.status !== 'conflict') { setStatus('dirty'); schedule(); }
+      // Editing approved minutes: nothing reaches the server until Save changes (which reopens them first).
+      if (state.status !== 'conflict') { setStatus('dirty'); if (!state.reopening) schedule(); }
     },
-    editable: function () { return !!state && (state.view.state === 'draft' || state.view.state === 'amending') && state.status !== 'conflict'; },
+    editable: function () { return !!state && (state.view.state === 'draft' || state.view.state === 'amending' || !!state.reopening) && state.status !== 'conflict'; },
+    /** Approved minutes: edit locally after the "approval again" warning; nothing is saved yet. */
+    beginReopen: function () { if (state) { state.reopening = { content: copy(state.content) }; emit(); } },
+    isReopening: function () { return !!(state && state.reopening); },
+    /** Save changes on approved minutes: withdraw the approval on the server, then save the edits. */
+    commitReopen: function (by) {
+      var runId = state.runId;
+      return MA.api.minutes.reopen(runId, by).then(function (view) {
+        if (!state || state.runId !== runId) return;
+        state.view = view;
+        state.reopening = null;
+        return save();
+      });
+    },
+    /** Cancel on approved minutes: back exactly as approved; the approval stands. */
+    cancelReopen: function () {
+      if (!state || !state.reopening) return;
+      clearTimeout(timer);
+      state.content = state.reopening.content; state.reopening = null; state.dirty = false;
+      clearBackup(state.runId);
+      setStatus('idle');
+    },
     /** Save now (before approving, leaving, or on "Retry"). Resolves when everything is on the server. */
     flush: function () { return save(); },
     retry: function () { return save(); },
@@ -108,8 +135,7 @@
     /** Plain text of everything the reviewer wrote (for the spelling check before approval). */
     texts: function () {
       if (!state) return [];
-      return state.content.sections.map(function (s) { return { where: s.title || 'Untitled section', text: (s.title ? s.title + '. ' : '') + MA.minutes.textOf(s.html) }; })
-        .concat(state.content.actionItems.filter(function (a) { return !a.dismissed; }).map(function (a, i) { return { where: 'Action item ' + (i + 1), text: a.task }; }));
+      return state.content.sections.map(function (s) { return { where: s.title || 'Untitled section', text: (s.title ? s.title + '. ' : '') + MA.minutes.textOf(s.html) }; });
     },
   };
 })();
